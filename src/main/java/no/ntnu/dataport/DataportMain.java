@@ -5,7 +5,7 @@ import akka.actor.ActorRef;
 import akka.actor.Inbox;
 import akka.actor.Props;
 
-public class ApplicationMain {
+public class DataportMain {
 
     public static void main(String[] args) {
         final ActorSystem system = ActorSystem.create("DataportActorSystem");
