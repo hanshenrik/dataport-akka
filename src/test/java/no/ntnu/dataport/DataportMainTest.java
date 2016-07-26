@@ -1,3 +1,5 @@
+package no.ntnu.dataport;
+
 import scala.concurrent.duration.Duration;
 import akka.actor.*;
 import akka.testkit.JavaTestKit;
