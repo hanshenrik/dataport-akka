@@ -55,13 +55,13 @@ public class SiteActor extends UntypedActor {
                 double lon = Double.parseDouble(device[3]);
                 switch (device[0]) {
                     case "gateway":
-                        log.info("Gateway: {}, {}, {}", eui, lat, lon);
+//                        log.info("Gateway: {}, {}, {}", eui, lat, lon);
                         // Create gateway actor
                         getContext().actorOf(DeviceActor.props(DeviceType.GATEWAY, eui, lat, lon), eui);
                         break;
                     // plus some behavior ...
                     case "sensor":
-                        log.info("Sensor: {}, {}, {}", eui, lat, lon);
+//                        log.info("Sensor: {}, {}, {}", eui, lat, lon);
                         // Create sensor actor
                         getContext().actorOf(DeviceActor.props(DeviceType.SENSOR, eui, lat, lon), eui);
                         break;
