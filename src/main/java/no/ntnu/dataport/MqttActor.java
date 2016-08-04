@@ -1,17 +1,24 @@
 package no.ntnu.dataport;
 
+import akka.actor.ActorRef;
 import akka.actor.Props;
 import akka.actor.UntypedActor;
+import akka.cluster.pubsub.DistributedPubSub;
+import akka.cluster.pubsub.DistributedPubSubMediator;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
-import java.util.Date;
+import java.util.UUID;
 
 public class MqttActor extends UntypedActor implements MqttCallback {
     LoggingAdapter log = Logging.getLogger(getContext().system(), this);
+
+    // activate the extension
+    ActorRef mediator =
+            DistributedPubSub.get(getContext().system()).mediator();
 
     /**
      * Create Props for an actor of this type.
@@ -37,36 +44,34 @@ public class MqttActor extends UntypedActor implements MqttCallback {
     final int qos;
     final String clientId;
     final String content;
+    MqttClient mqttClient;
 
     public MqttActor(String broker, String topic, int qos) {
         log.info("Constructor called with broker: {}, topic: {}, qos: {}", broker, topic, qos);
         this.broker     = broker;
         this.topic      = topic;
         this.qos        = qos;
-        this.clientId   = "client-" + new Date().getTime();
-        this.content    = "TTN actor started successfully!";
+        this.clientId   = "client-" + UUID.randomUUID().toString();
+        this.content    = "MQTT actor started successfully!";
 
         MemoryPersistence persistence = new MemoryPersistence();
         try {
-            MqttClient sampleClient = new MqttClient(broker, clientId, persistence);
+            this.mqttClient = new MqttClient(broker, clientId, persistence);
 
             // Set the callback function to be able to receive messages.
-            sampleClient.setCallback(this);
+            mqttClient.setCallback(this);
 
             MqttConnectOptions connectionOptions = new MqttConnectOptions();
             connectionOptions.setCleanSession(true);
             // TODO: take these as (optional?) parameters. Needed for staging.thethingsnetwork.org!
-//            connectionOptions.setUserName("70B3D57ED000091D");
-//            connectionOptions.setPassword("ytpiqGLn5fYjlmkMvC95sim02Je6BeB+7dxn4MU4/Bg=".toCharArray());
+//            connectionOptions.setUserName("");
+//            connectionOptions.setPassword("".toCharArray());
 
             log.info("Connecting to broker: {}", broker);
-            sampleClient.connect(connectionOptions);
+            mqttClient.connect(connectionOptions);
 
-            sampleClient.subscribe(topic);
+            mqttClient.subscribe(topic);
             log.info("Subscribed to topic: {}", topic);
-
-//            sampleClient.publish(topic, new MqttMessage(content.getBytes()));
-//            log.info("Published to topic: {}", topic);
         } catch(MqttException me) {
             log.info("reason "+me.getReasonCode());
             log.info("msg "+me.getMessage());
@@ -90,6 +95,15 @@ public class MqttActor extends UntypedActor implements MqttCallback {
     @Override
     public void messageArrived(String topic, MqttMessage message) throws Exception {
         log.info("MQTT Received: '{}' on topic '{}'", message, topic);
+        String in = message.toString();
+        // TODO: Maybe do some filtering with the input?
+        String out = in.toUpperCase();
+        mediator.tell(new DistributedPubSubMediator.Publish(topic, out), getSelf());
+        // OBS! Do not publish to same MQTT broker on same topic, as this will cause a loop!
+        // Better to tell another actor a message was received, and let this actor publish to any relevant
+        // MQTT topics it might be connected to?
+//        mqttClient.publish(topic, new MqttMessage(content.getBytes()));
+//        log.info("Published to topic: {}", topic);
     }
 
     @Override
