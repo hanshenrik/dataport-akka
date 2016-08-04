@@ -1,20 +1,31 @@
 package no.ntnu.dataport;
 
-import akka.actor.ActorSystem;
-import akka.actor.ActorRef;
-import akka.actor.Inbox;
-import akka.actor.Props;
+import akka.actor.*;
+
+import java.io.Serializable;
 
 public class DataportMain {
+
+    public static class MqttConnectMessage implements Serializable {}
+    public static class MqttDisconnectMessage implements Serializable {}
 
     public static void main(String[] args) {
         final ActorSystem system = ActorSystem.create("DataportActorSystem");
 
         // Create MQTT actors
-        final ActorRef mqttDataport = system.actorOf(MqttActor.props("tcp://dataport.item.ntnu.no:1883", "hh-test", 0), "dataport");
-        final ActorRef mqttTTNCroftNodes = system.actorOf(MqttActor.props("tcp://croft.thethings.girovito.nl:1883", "nodes/17F979AC/packets", 0), "ttn-croft-nodes");
-        final ActorRef mqttTTNCroftGateways = system.actorOf(MqttActor.props("tcp://croft.thethings.girovito.nl:1883", "gateways/1DEE026E0BBE6E66/status", 0), "ttn-croft-gateways");
-//        final ActorRef ttnStaging = system.actorOf(MqttActor.props("tcp://staging.thethingsnetwork.org:1883", "+/devices/+/up", 0), "ttn-staging");
+        Props dataportProps = MqttActor.props("tcp://dataport.item.ntnu.no:1883", "hh-test", 0, null, null);
+        Props croftNodeProps = MqttActor.props("tcp://croft.thethings.girovito.nl:1883", "nodes/17F979AC/packets", 0, null, null);
+        Props croftGatewayProps = MqttActor.props("tcp://croft.thethings.girovito.nl:1883", "gateways/1DEE026E0BBE6E66/status", 0, null, null);
+        Props stagingProps = MqttActor.props("tcp://staging.thethingsnetwork.org:1883", "+/devices/+/up", 0, "user", "password");
+        final ActorRef mqttDataport = system.actorOf(dataportProps, "dataport");
+        final ActorRef mqttTTNCroftNodes = system.actorOf(croftNodeProps, "ttn-croft-nodes");
+        final ActorRef mqttTTNCroftGateways = system.actorOf(croftGatewayProps, "ttn-croft-gateways");
+        final ActorRef mqttStaging = system.actorOf(stagingProps, "ttn-staging");
+        mqttDataport.tell(new MqttConnectMessage(), ActorRef.noSender());
+        mqttDataport.tell(new MqttDisconnectMessage(), ActorRef.noSender());
+        mqttTTNCroftNodes.tell(new MqttConnectMessage(), ActorRef.noSender());
+        mqttTTNCroftGateways.tell(new MqttConnectMessage(), ActorRef.noSender());
+        mqttStaging.tell(new MqttConnectMessage(), ActorRef.noSender());
 
         // Create the "actor-in-a-box"
         //final Inbox inbox = Inbox.create(system);

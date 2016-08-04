@@ -17,8 +17,7 @@ public class MqttActor extends UntypedActor implements MqttCallback {
     LoggingAdapter log = Logging.getLogger(getContext().system(), this);
 
     // activate the extension
-    ActorRef mediator =
-            DistributedPubSub.get(getContext().system()).mediator();
+    ActorRef mediator = DistributedPubSub.get(getContext().system()).mediator();
 
     /**
      * Create Props for an actor of this type.
@@ -28,13 +27,13 @@ public class MqttActor extends UntypedActor implements MqttCallback {
      * @return a Props for creating this actor, which can then be further configured
      *         (e.g. calling `.withDispatcher()` on it)
      */
-    public static Props props(final String broker, final String topic, final int qos) {
+    public static Props props(final String broker, final String topic, final int qos, final String username, final String password) {
         return Props.create(new Creator<MqttActor>() {
             private static final long serialVersionUID = 1L;
 
             @Override
             public MqttActor create() throws Exception {
-                return new MqttActor(broker, topic, qos);
+                return new MqttActor(broker, topic, qos, username, password);
             }
         });
     }
@@ -44,47 +43,72 @@ public class MqttActor extends UntypedActor implements MqttCallback {
     final int qos;
     final String clientId;
     final String content;
+    final String username;
+    final String password;
     MqttClient mqttClient;
 
-    public MqttActor(String broker, String topic, int qos) {
-        log.info("Constructor called with broker: {}, topic: {}, qos: {}", broker, topic, qos);
+    public MqttActor(String broker, String topic, int qos, String username, String password) throws MqttException {
+        log.info("Constructor called with broker: {}, topic: {}, username: {}, password: {}", broker, topic, username, password);
         this.broker     = broker;
         this.topic      = topic;
         this.qos        = qos;
+        this.username   = username;
+        this.password   = password;
         this.clientId   = "client-" + UUID.randomUUID().toString();
         this.content    = "MQTT actor started successfully!";
-
-        MemoryPersistence persistence = new MemoryPersistence();
-        try {
-            this.mqttClient = new MqttClient(broker, clientId, persistence);
-
-            // Set the callback function to be able to receive messages.
-            mqttClient.setCallback(this);
-
-            MqttConnectOptions connectionOptions = new MqttConnectOptions();
-            connectionOptions.setCleanSession(true);
-            // TODO: take these as (optional?) parameters. Needed for staging.thethingsnetwork.org!
-//            connectionOptions.setUserName("");
-//            connectionOptions.setPassword("".toCharArray());
-
-            log.info("Connecting to broker: {}", broker);
-            mqttClient.connect(connectionOptions);
-
-            mqttClient.subscribe(topic);
-            log.info("Subscribed to topic: {}", topic);
-        } catch(MqttException me) {
-            log.info("reason "+me.getReasonCode());
-            log.info("msg "+me.getMessage());
-            log.info("loc "+me.getLocalizedMessage());
-            log.info("cause "+me.getCause());
-            log.info("excep "+me);
-            me.printStackTrace();
-        }
     }
 
     @Override
-    public void onReceive(Object message) {
-        // Do something with if someone sends a message to me..?
+    public void onReceive(Object message) throws MqttException {
+        if (message instanceof DataportMain.MqttConnectMessage) {
+            connect();
+        }
+        if (message instanceof DataportMain.MqttDisconnectMessage) {
+            disconnect();
+        }
+        else {
+            unhandled(message);
+        }
+    }
+
+    private void disconnect() throws MqttException {
+        mqttClient.disconnect();
+    }
+
+    private boolean connect() throws MqttException {
+        MemoryPersistence persistence = new MemoryPersistence();
+//        try {
+        this.mqttClient = new MqttClient(broker, clientId, persistence);
+
+        // Set the callback function to be able to receive messages.
+        mqttClient.setCallback(this);
+
+        MqttConnectOptions connectionOptions = new MqttConnectOptions();
+        connectionOptions.setCleanSession(true);
+        if (username != null && password != null) {
+            log.info("Username and password provided. Add them to connectionOptions");
+            connectionOptions.setUserName(username);
+            connectionOptions.setPassword(password.toCharArray());
+        }
+
+        log.info("Connecting to broker: {}", broker);
+        mqttClient.connect(connectionOptions);
+
+        mqttClient.subscribe(topic);
+        log.info("Subscribed to topic: {}", topic);
+        return mqttClient.isConnected();
+//        } catch(MqttException me) {
+//            log.info("reason "+me.getReasonCode());
+//            log.info("msg "+me.getMessage());
+//            log.info("loc "+me.getLocalizedMessage());
+//            log.info("cause "+me.getCause());
+//            log.info("excep "+me);
+//            me.printStackTrace();
+//        }
+    }
+
+    private boolean isConnected() {
+        return mqttClient.isConnected();
     }
 
     @Override
