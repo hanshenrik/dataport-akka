@@ -8,6 +8,7 @@ public class DataportMain {
 
     public static class MqttConnectMessage implements Serializable {}
     public static class MqttDisconnectMessage implements Serializable {}
+    public static class MqttConnectionStatusMessage implements Serializable {}
 
     public static void main(String[] args) {
         final ActorSystem system = ActorSystem.create("DataportActorSystem");

@@ -56,6 +56,9 @@ public class MqttActor extends UntypedActor implements MqttCallback {
         this.password   = password;
         this.clientId   = "client-" + UUID.randomUUID().toString();
         this.content    = "MQTT actor started successfully!";
+
+        MemoryPersistence persistence = new MemoryPersistence();
+        this.mqttClient = new MqttClient(broker, clientId, persistence);
     }
 
     @Override
@@ -65,6 +68,11 @@ public class MqttActor extends UntypedActor implements MqttCallback {
         }
         if (message instanceof DataportMain.MqttDisconnectMessage) {
             disconnect();
+        }
+        if (message instanceof DataportMain.MqttConnectionStatusMessage) {
+            // TODO: when implemented as FSM, this should be generalized to ask for the actor state
+            // and send back the enum holding the state, I think..
+            getSender().tell(isConnected(), getSelf());
         }
         else {
             unhandled(message);
@@ -76,10 +84,6 @@ public class MqttActor extends UntypedActor implements MqttCallback {
     }
 
     private boolean connect() throws MqttException {
-        MemoryPersistence persistence = new MemoryPersistence();
-//        try {
-        this.mqttClient = new MqttClient(broker, clientId, persistence);
-
         // Set the callback function to be able to receive messages.
         mqttClient.setCallback(this);
 
