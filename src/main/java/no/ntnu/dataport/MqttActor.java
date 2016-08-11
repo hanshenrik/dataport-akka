@@ -1,8 +1,6 @@
 package no.ntnu.dataport;
 
-import akka.actor.ActorRef;
-import akka.actor.Props;
-import akka.actor.UntypedActor;
+import akka.actor.*;
 import akka.cluster.pubsub.DistributedPubSub;
 import akka.cluster.pubsub.DistributedPubSubMediator;
 import akka.event.Logging;
@@ -13,11 +11,16 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import java.util.UUID;
 
-public class MqttActor extends UntypedActor implements MqttCallback {
+public class MqttActor extends UntypedActor implements MqttCallbackExtended {
     LoggingAdapter log = Logging.getLogger(getContext().system(), this);
 
     // activate the extension
     ActorRef mediator = DistributedPubSub.get(getContext().system()).mediator();
+
+    @Override
+    public void preStart() {
+        log.info("Yo!");
+    }
 
     /**
      * Create Props for an actor of this type.
@@ -45,6 +48,7 @@ public class MqttActor extends UntypedActor implements MqttCallback {
     final String content;
     final String username;
     final String password;
+    final MqttConnectOptions connectionOptions;
     MqttClient mqttClient;
 
     public MqttActor(String broker, String topic, int qos, String username, String password) throws MqttException {
@@ -59,17 +63,30 @@ public class MqttActor extends UntypedActor implements MqttCallback {
 
         MemoryPersistence persistence = new MemoryPersistence();
         this.mqttClient = new MqttClient(broker, clientId, persistence);
+
+        // Set the callback function to be able to receive messages.
+        mqttClient.setCallback(this);
+
+        this.connectionOptions = new MqttConnectOptions();
+        connectionOptions.setCleanSession(true);
+        connectionOptions.setAutomaticReconnect(true);
+        if (username != null && password != null) {
+            log.info("Username and password provided. Add them to connectionOptions");
+            connectionOptions.setUserName(username);
+            connectionOptions.setPassword(password.toCharArray());
+        }
     }
 
     @Override
-    public void onReceive(Object message) throws MqttException {
+    public void onReceive(Object message) throws Exception {
+//        log.info("Got: {} from {}", message, getSender());
         if (message instanceof DataportMain.MqttConnectMessage) {
             connect();
         }
-        if (message instanceof DataportMain.MqttDisconnectMessage) {
+        else if (message instanceof DataportMain.MqttDisconnectMessage) {
             disconnect();
         }
-        if (message instanceof DataportMain.MqttConnectionStatusMessage) {
+        else if (message instanceof DataportMain.MqttConnectionStatusMessage) {
             // TODO: when implemented as FSM, this should be generalized to ask for the actor state
             // and send back the enum holding the state, I think..
             getSender().tell(isConnected(), getSelf());
@@ -81,47 +98,55 @@ public class MqttActor extends UntypedActor implements MqttCallback {
 
     private void disconnect() throws MqttException {
         mqttClient.disconnect();
+        // TODO: Set state to DISCONNECTED
     }
 
-    private boolean connect() throws MqttException {
-        // Set the callback function to be able to receive messages.
-        mqttClient.setCallback(this);
-
-        MqttConnectOptions connectionOptions = new MqttConnectOptions();
-        connectionOptions.setCleanSession(true);
-        if (username != null && password != null) {
-            log.info("Username and password provided. Add them to connectionOptions");
-            connectionOptions.setUserName(username);
-            connectionOptions.setPassword(password.toCharArray());
-        }
-
+    private void connect() throws MqttException {
         log.info("Connecting to broker: {}", broker);
-        mqttClient.connect(connectionOptions);
-
-        mqttClient.subscribe(topic);
-        log.info("Subscribed to topic: {}", topic);
-        return mqttClient.isConnected();
-//        } catch(MqttException me) {
-//            log.info("reason "+me.getReasonCode());
-//            log.info("msg "+me.getMessage());
-//            log.info("loc "+me.getLocalizedMessage());
-//            log.info("cause "+me.getCause());
-//            log.info("excep "+me);
-//            me.printStackTrace();
-//        }
+        try {
+            mqttClient.connect(connectionOptions);
+            mqttClient.subscribe(topic);
+            log.info("Subscribed to topic: {}", topic);
+            // TODO: Set state to CONNECTED
+        } catch(MqttException me) {
+            switch (me.getReasonCode()) {
+                case MqttException.REASON_CODE_SERVER_CONNECT_ERROR:
+                    log.error("REASON_CODE_SERVER_CONNECT_ERROR: {}", me.getMessage());
+                    break;
+                default:
+                    throw me;
+            }
+        }
     }
 
+    // TODO: Don't use this when FSM, use state instead
     private boolean isConnected() {
         return mqttClient.isConnected();
     }
 
     @Override
     public void connectionLost(Throwable cause) {
+        // TODO: Can we get this to just throw the exception, so that it is handled in the supervisors
+        // SupervisorStragegy? Sending an excplicit message for this failure is probably not the cleanest
+        // approach...
+        log.error(cause, "Lost MQTT connection! MqttClient's automatic reconnect kicking in");
+        // TODO: Set state to TRYING_TO_CONNECT
+        // TODO: Tell parent i changed state (always do this?)
 
+//        getSelf().tell(Kill.getInstance(), getSelf());
+//        getContext().parent().tell(new MqttException(cause), getSender());
     }
 
     @Override
-    public void messageArrived(String topic, MqttMessage message) throws Exception {
+    public void connectComplete(boolean reconnect, String serverURI) {
+        if (reconnect) {
+            // TODO: set state to connected again
+            getContext().parent().tell("I'm connected again!", getSelf());
+        }
+    }
+
+    @Override
+    public void messageArrived(String topic, MqttMessage message) {
         log.info("MQTT Received: '{}' on topic '{}'", message, topic);
         String in = message.toString();
         // TODO: Maybe do some filtering with the input?
