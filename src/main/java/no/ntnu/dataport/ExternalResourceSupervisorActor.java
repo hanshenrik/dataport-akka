@@ -3,24 +3,18 @@ package no.ntnu.dataport;
 import akka.actor.*;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
-//import akka.japi.Function;
 import akka.japi.Creator;
-import akka.japi.Function;
 import akka.japi.pf.DeciderBuilder;
 import akka.pattern.Backoff;
+import akka.pattern.BackoffOptions;
 import akka.pattern.BackoffSupervisor;
 import no.ntnu.dataport.DataportMain.*;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import scala.concurrent.duration.Duration;
 
-import java.net.ConnectException;
 import java.util.concurrent.TimeUnit;
 
-import static akka.actor.SupervisorStrategy.Directive;
-import static akka.actor.SupervisorStrategy.restart;
-import static akka.actor.SupervisorStrategy.resume;
-import static akka.actor.SupervisorStrategy.stop;
-import static akka.actor.SupervisorStrategy.escalate;
+import static akka.actor.SupervisorStrategy.*;
 
 
 public class ExternalResourceSupervisorActor extends UntypedActor {
@@ -46,24 +40,47 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
 //        Props stagingProps = MqttActor.props("tcp://staging.thethingsnetwork.org:1883", "+/devices/+/up", 0, "user", "password");
 //        Props stagingProps = MqttActor.props("BAD ADDRESS", "+/devices/+/up", 0, "user", "password");
 
-        final ActorRef mqttDataport = getContext().actorOf(dataportProps, "dataport");
-        final ActorRef mqttTTNCroftNodes = getContext().actorOf(croftNodeProps, "ttn-croft-nodes");
-        final ActorRef mqttTTNCroftGateways = getContext().actorOf(croftGatewayProps, "ttn-croft-gateways");
+//        final ActorRef mqttDataport = getContext().actorOf(dataportProps, "dataport");
+//        final ActorRef mqttTTNCroftNodes = getContext().actorOf(croftNodeProps, "ttn-croft-nodes");
+//        final ActorRef mqttTTNCroftGateways = getContext().actorOf(croftGatewayProps, "ttn-croft-gateways");
 //        final ActorRef mqttStaging = getContext().actorOf(stagingProps, "ttn-staging");
 
-        mqttDataport.tell(new MqttConnectMessage(), getSelf());
-        mqttDataport.tell(new MqttDisconnectMessage(), getSelf());
-        mqttTTNCroftNodes.tell(new MqttConnectMessage(), getSelf());
-        mqttTTNCroftGateways.tell(new MqttConnectMessage(), getSelf());
+//        mqttTTNCroftNodes.tell(new MqttConnectMessage(), getSelf());
+//        mqttTTNCroftGateways.tell(new MqttConnectMessage(), getSelf());
 //        mqttStaging.tell(new MqttConnectMessage(), getSelf());
 
-        getContext().system().scheduler().schedule(
-                Duration.Zero(),
-                Duration.create(10, TimeUnit.SECONDS),
-                mqttDataport,
-                new MqttConnectionStatusMessage(),
-                getContext().dispatcher(),
-                getSelf());
+
+        BackoffOptions dataportBackoffOptions= Backoff.onFailure(
+                dataportProps,
+                "dataport",
+                Duration.create(3, TimeUnit.SECONDS),
+                Duration.create(2, TimeUnit.MINUTES),
+                0.2 // add 20% "noise" to vary the intervals slightly
+            ).withSupervisorStrategy(mqttActorStrategy);
+
+        BackoffOptions croftNodeBackoffOptions = Backoff.onFailure(
+                croftNodeProps,
+                "croftNode",
+                Duration.create(3, TimeUnit.SECONDS),
+                Duration.create(2, TimeUnit.MINUTES),
+                0.2 // add 20% "noise" to vary the intervals slightly
+        ).withSupervisorStrategy(mqttActorStrategy);
+
+        BackoffOptions croftGatewayBackoffOptions = Backoff.onFailure(
+                croftGatewayProps,
+                "croftGateway",
+                Duration.create(3, TimeUnit.SECONDS),
+                Duration.create(2, TimeUnit.MINUTES),
+                0.2 // add 20% "noise" to vary the intervals slightly
+        ).withSupervisorStrategy(mqttActorStrategy);
+
+        final Props dataportSupervisorProps = BackoffSupervisor.props(dataportBackoffOptions);
+        final Props croftNodeSupervisorProps = BackoffSupervisor.props(croftNodeBackoffOptions);
+        final Props croftGatewaySupervisorProps = BackoffSupervisor.props(croftGatewayBackoffOptions);
+
+        getContext().actorOf(dataportSupervisorProps, "dataportSupervisor");
+        getContext().actorOf(croftNodeSupervisorProps, "croftNodeSupervisor");
+        getContext().actorOf(croftGatewaySupervisorProps, "croftGatewaySupervisor");
     }
 
     @Override
@@ -71,11 +88,8 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
         log.info("Received {} from {}", message, getSender());
     }
 
-    private static SupervisorStrategy strategy =
-        // TODO: this time range and maxRetries does not seem to work...
+    private OneForOneStrategy mqttActorStrategy =
         new OneForOneStrategy(
-            MAX_NUMBER_OF_ACTOR_RESTARTS,
-            Duration.create(1, TimeUnit.MINUTES),
             DeciderBuilder.
                 match(ArithmeticException.class, e -> {
                     System.out.println("ArithmeticException: " + e.getMessage());
@@ -91,22 +105,14 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
                 }).
                 match(MqttException.class, e -> {
                     System.out.println("MqttException: " + e.getMessage());
-//                    notifyConsumerFailure(getSender(), e);
                     return restart();
                 }).
                 match(ActorKilledException.class, e -> {
                     System.out.println("ActorKilledException: " + e.getMessage());
-//                    notifyConsumerFailure(getSender(), e);
                     return restart();
                 }).
                 matchAny(o -> {
                     System.out.println("Unexpected failure: " + o.getMessage());
                     return escalate();
                 }).build());
-
-    @Override
-    public SupervisorStrategy supervisorStrategy() {
-        return strategy;
-    }
-
 }

@@ -13,9 +13,10 @@ import java.util.UUID;
 
 public class MqttActor extends UntypedActor implements MqttCallbackExtended {
     LoggingAdapter log = Logging.getLogger(getContext().system(), this);
-
-    // activate the extension
     ActorRef mediator = DistributedPubSub.get(getContext().system()).mediator();
+
+    // DEV
+    private static boolean INTERNAL_FAULT_HANDLING = false;
 
     @Override
     public void preStart() {
@@ -69,27 +70,28 @@ public class MqttActor extends UntypedActor implements MqttCallbackExtended {
 
         this.connectionOptions = new MqttConnectOptions();
         connectionOptions.setCleanSession(true);
-        connectionOptions.setAutomaticReconnect(true);
+        if (INTERNAL_FAULT_HANDLING) {
+            connectionOptions.setAutomaticReconnect(true);
+        }
         if (username != null && password != null) {
             log.info("Username and password provided. Add them to connectionOptions");
             connectionOptions.setUserName(username);
             connectionOptions.setPassword(password.toCharArray());
         }
+
+        connect();
     }
 
     @Override
     public void onReceive(Object message) throws Exception {
-//        log.info("Got: {} from {}", message, getSender());
-        if (message instanceof DataportMain.MqttConnectMessage) {
-            connect();
-        }
-        else if (message instanceof DataportMain.MqttDisconnectMessage) {
-            disconnect();
-        }
-        else if (message instanceof DataportMain.MqttConnectionStatusMessage) {
+        log.info("Got: {} from {}", message, getSender());
+        if (message instanceof DataportMain.MqttConnectionStatusMessage) {
             // TODO: when implemented as FSM, this should be generalized to ask for the actor state
             // and send back the enum holding the state, I think..
             getSender().tell(isConnected(), getSelf());
+        }
+        else if (message instanceof MqttException && getSender() == getSelf()) {
+            throw (MqttException) message;
         }
         else {
             unhandled(message);
@@ -98,24 +100,31 @@ public class MqttActor extends UntypedActor implements MqttCallbackExtended {
 
     private void disconnect() throws MqttException {
         mqttClient.disconnect();
+        log.info("Disconnected from MQTT broker");
         // TODO: Set state to DISCONNECTED
     }
 
     private void connect() throws MqttException {
         log.info("Connecting to broker: {}", broker);
-        try {
+        if (INTERNAL_FAULT_HANDLING) {
+            try {
+                mqttClient.connect(connectionOptions);
+                mqttClient.subscribe(topic);
+                log.info("Subscribed to topic: {}", topic);
+                // TODO: Set state to CONNECTED
+            } catch(MqttException me) {
+                switch (me.getReasonCode()) {
+                    case MqttException.REASON_CODE_SERVER_CONNECT_ERROR:
+                        log.error("REASON_CODE_SERVER_CONNECT_ERROR: {}", me.getMessage());
+                        break;
+                    default:
+                        log.error(me, "Unhandled exception!!");
+                }
+            }
+        }
+        else {
             mqttClient.connect(connectionOptions);
             mqttClient.subscribe(topic);
-            log.info("Subscribed to topic: {}", topic);
-            // TODO: Set state to CONNECTED
-        } catch(MqttException me) {
-            switch (me.getReasonCode()) {
-                case MqttException.REASON_CODE_SERVER_CONNECT_ERROR:
-                    log.error("REASON_CODE_SERVER_CONNECT_ERROR: {}", me.getMessage());
-                    break;
-                default:
-                    throw me;
-            }
         }
     }
 
@@ -126,22 +135,28 @@ public class MqttActor extends UntypedActor implements MqttCallbackExtended {
 
     @Override
     public void connectionLost(Throwable cause) {
+        getContext().parent().tell("I lost my MQTT connection!", getSelf());
         // TODO: Can we get this to just throw the exception, so that it is handled in the supervisors
         // SupervisorStragegy? Sending an excplicit message for this failure is probably not the cleanest
         // approach...
-        log.error(cause, "Lost MQTT connection! MqttClient's automatic reconnect kicking in");
         // TODO: Set state to TRYING_TO_CONNECT
         // TODO: Tell parent i changed state (always do this?)
-
-//        getSelf().tell(Kill.getInstance(), getSelf());
-//        getContext().parent().tell(new MqttException(cause), getSender());
+        if (INTERNAL_FAULT_HANDLING) {
+            log.error(cause, "Lost MQTT connection! MqttClient's automatic reconnect kicking in");
+            // do nothing, Paho automatic retry should be set to true
+        } else {
+            // Send exception as message to self and throw it there, since this method doesn't allow throwing exceptions
+            getSelf().tell(new MqttException(cause), getSelf());
+        }
     }
 
     @Override
     public void connectComplete(boolean reconnect, String serverURI) {
+        // TODO: set state to connected again
         if (reconnect) {
-            // TODO: set state to connected again
-            getContext().parent().tell("I'm connected again!", getSelf());
+            getContext().parent().tell("I RECONNETED to my MQTT broker!", getSelf());
+        } else {
+            getContext().parent().tell("I connected to my MQTT broker for the first time", getSelf());
         }
     }
 
