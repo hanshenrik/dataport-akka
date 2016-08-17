@@ -32,7 +32,7 @@ public class MqttActorTest {
     }
 
     @Theory
-    public void notConnectedOnCreation(String broker) {
+    public void isConnectedOnCreation(String broker) {
         new JavaTestKit(system) {{
             Props props = MqttActor.props(broker, "+", 0, null, null);
             final ActorRef mqttRef = system.actorOf(props);
@@ -40,45 +40,7 @@ public class MqttActorTest {
             // Ask for the connection status
             mqttRef.tell(new DataportMain.MqttConnectionStatusMessage(), getRef());
             // Await the correct response
-            expectMsgEquals(duration(DEFAULT_DURATION), false);
-        }};
-    }
-
-    @Theory
-    public void mqttConnectMessageResultsInMqttConnection(String broker) {
-        new JavaTestKit(system) {{
-            Props props = MqttActor.props(broker, "#", 0, null, null);
-            final ActorRef mqttRef = system.actorOf(props);
-
-            // Tell the actor to connect
-            mqttRef.tell(new DataportMain.MqttConnectMessage(), getRef());
-            // Ask for the connection status
-            mqttRef.tell(new DataportMain.MqttConnectionStatusMessage(), getRef());
-            // Await the correct response
             expectMsgEquals(duration(DEFAULT_DURATION), true);
-        }};
-    }
-
-    @Theory
-    public void mqttDisonnectMessageResultsInNotConnected(String broker) {
-        new JavaTestKit(system) {{
-            Props props = MqttActor.props(broker, "#", 0, null, null);
-            final ActorRef mqttRef = system.actorOf(props);
-
-            // Tell the actor to connect
-            mqttRef.tell(new DataportMain.MqttConnectMessage(), getRef());
-            // Ask for the connection status
-            mqttRef.tell(new DataportMain.MqttConnectionStatusMessage(), getRef());
-            // Await the correct response
-            expectMsgEquals(duration(DEFAULT_DURATION), true);
-
-            // Tell the actor to disconnect
-            mqttRef.tell(new DataportMain.MqttDisconnectMessage(), getRef());
-            // Ask for the connection status
-            mqttRef.tell(new DataportMain.MqttConnectionStatusMessage(), getRef());
-
-            // Check that the actor is not connected to the broker anymore
-            expectMsgEquals(duration(DEFAULT_DURATION), false);
         }};
     }
 }
