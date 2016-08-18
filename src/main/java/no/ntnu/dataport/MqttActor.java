@@ -11,18 +11,7 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import java.util.UUID;
 
-public class MqttActor extends UntypedActor implements MqttCallbackExtended {
-    LoggingAdapter log = Logging.getLogger(getContext().system(), this);
-    ActorRef mediator = DistributedPubSub.get(getContext().system()).mediator();
-
-    // DEV
-    private static boolean INTERNAL_FAULT_HANDLING = false;
-
-    @Override
-    public void preStart() {
-        log.info("Yo!");
-    }
-
+public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
     /**
      * Create Props for an actor of this type.
      * @param broker    The broker address to be passed to this actor’s constructor.
@@ -42,6 +31,12 @@ public class MqttActor extends UntypedActor implements MqttCallbackExtended {
         });
     }
 
+    LoggingAdapter log = Logging.getLogger(getContext().system(), this);
+    ActorRef mediator = DistributedPubSub.get(getContext().system()).mediator();
+
+    // DEV
+    private static boolean INTERNAL_FAULT_HANDLING = false;
+
     final String broker;
     final String topic;
     final int qos;
@@ -50,7 +45,12 @@ public class MqttActor extends UntypedActor implements MqttCallbackExtended {
     final String username;
     final String password;
     final MqttConnectOptions connectionOptions;
-    MqttClient mqttClient;
+//    MqttClient mqttClient;
+
+    @Override
+    public void preStart() {
+        log.info("Yo!");
+    }
 
     public MqttActor(String broker, String topic, int qos, String username, String password) throws MqttException {
         log.info("Constructor called with broker: {}, topic: {}, username: {}, password: {}", broker, topic, username, password);
@@ -63,10 +63,12 @@ public class MqttActor extends UntypedActor implements MqttCallbackExtended {
         this.content    = "MQTT actor started successfully!";
 
         MemoryPersistence persistence = new MemoryPersistence();
-        this.mqttClient = new MqttClient(broker, clientId, persistence);
+        MqttClient mqttClient = new MqttClient(broker, clientId, persistence);
 
         // Set the callback function to be able to receive messages.
         mqttClient.setCallback(this);
+
+        init(mqttClient);
 
         this.connectionOptions = new MqttConnectOptions();
         connectionOptions.setCleanSession(true);
@@ -86,9 +88,7 @@ public class MqttActor extends UntypedActor implements MqttCallbackExtended {
     public void onReceive(Object message) throws Exception {
         log.info("Got: {} from {}", message, getSender());
         if (message instanceof DataportMain.MqttConnectionStatusMessage) {
-            // TODO: when implemented as FSM, this should be generalized to ask for the actor state
-            // and send back the enum holding the state, I think..
-            getSender().tell(isConnected(), getSelf());
+            getSender().tell(getState(), getSelf());
         }
         else if (message instanceof MqttException && getSender() == getSelf()) {
             throw (MqttException) message;
@@ -99,17 +99,18 @@ public class MqttActor extends UntypedActor implements MqttCallbackExtended {
     }
 
     private void disconnect() throws MqttException {
-        mqttClient.disconnect();
+        getMqttClient().disconnect();
+        setState(State.DISCONNECTED);
         log.info("Disconnected from MQTT broker");
-        // TODO: Set state to DISCONNECTED
     }
 
     private void connect() throws MqttException {
+        setState(State.CONNECTING);
         log.info("Connecting to broker: {}", broker);
         if (INTERNAL_FAULT_HANDLING) {
             try {
-                mqttClient.connect(connectionOptions);
-                mqttClient.subscribe(topic);
+                getMqttClient().connect(connectionOptions);
+                getMqttClient().subscribe(topic);
                 log.info("Subscribed to topic: {}", topic);
                 // TODO: Set state to CONNECTED
             } catch(MqttException me) {
@@ -120,21 +121,18 @@ public class MqttActor extends UntypedActor implements MqttCallbackExtended {
                     default:
                         log.error(me, "Unhandled exception!!");
                 }
-            }
+            }        // TODO: Set state to DISCONNECTED
+
         }
         else {
-            mqttClient.connect(connectionOptions);
-            mqttClient.subscribe(topic);
+            getMqttClient().connect(connectionOptions);
+            getMqttClient().subscribe(topic);
         }
-    }
-
-    // TODO: Don't use this when FSM, use state instead
-    private boolean isConnected() {
-        return mqttClient.isConnected();
     }
 
     @Override
     public void connectionLost(Throwable cause) {
+        setState(State.DISCONNECTED);
         getContext().parent().tell("I lost my MQTT connection!", getSelf());
         // TODO: Can we get this to just throw the exception, so that it is handled in the supervisors
         // SupervisorStragegy? Sending an excplicit message for this failure is probably not the cleanest
@@ -152,6 +150,7 @@ public class MqttActor extends UntypedActor implements MqttCallbackExtended {
 
     @Override
     public void connectComplete(boolean reconnect, String serverURI) {
+        setState(State.CONNECTED);
         // TODO: set state to connected again
         if (reconnect) {
             getContext().parent().tell("I RECONNETED to my MQTT broker!", getSelf());
@@ -170,13 +169,18 @@ public class MqttActor extends UntypedActor implements MqttCallbackExtended {
         // OBS! Do not publish to same MQTT broker on same topic, as this will cause a loop!
         // Better to tell another actor a message was received, and let this actor publish to any relevant
         // MQTT topics it might be connected to?
-//        mqttClient.publish(topic, new MqttMessage(content.getBytes()));
+//        getMqttClient().publish(topic, new MqttMessage(content.getBytes()));
 //        log.info("Published to topic: {}", topic);
     }
 
     @Override
     public void deliveryComplete(IMqttDeliveryToken token) {
 
+    }
+
+    @Override
+    protected void transition(State old, State next) {
+        getContext().parent().tell("Changed from state: "+old+" to "+next, getSelf());
     }
 }
 
