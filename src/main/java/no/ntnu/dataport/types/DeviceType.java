@@ -1,4 +1,4 @@
-package no.ntnu.dataport;
+package no.ntnu.dataport.types;
 
 public enum DeviceType {
     SENSOR, GATEWAY

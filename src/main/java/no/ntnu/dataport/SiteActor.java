@@ -5,6 +5,7 @@ import akka.actor.UntypedActor;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
+import no.ntnu.dataport.types.DeviceType;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -79,6 +80,7 @@ public class SiteActor extends UntypedActor {
 
     @Override
     public void onReceive(Object message) {
+        log.info("Received");
         // TODO: Handle adding of new devices through messages here, instead of reading from file!
     }
 }

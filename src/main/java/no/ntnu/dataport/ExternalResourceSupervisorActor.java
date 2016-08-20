@@ -37,8 +37,7 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
         Props dataportProps = MqttActor.props("tcp://dataport.item.ntnu.no:1883", "hh-test", 0, null, null);
         Props croftNodeProps = MqttActor.props("tcp://croft.thethings.girovito.nl:1883", "nodes/02031902/packets", 0, null, null);
         Props croftGatewayProps = MqttActor.props("tcp://croft.thethings.girovito.nl:1883", "gateways/1DEE192E3D82B8E4/status", 0, null, null);
-//        Props stagingProps = MqttActor.props("tcp://staging.thethingsnetwork.org:1883", "+/devices/+/up", 0, "user", "password");
-//        Props stagingProps = MqttActor.props("BAD ADDRESS", "+/devices/+/up", 0, "user", "password");
+        Props stagingProps = MqttActor.props("tcp://staging.thethingsnetwork.org:1883", "+/devices/+/up", 0, "0807060504030201", "I0f+e1W+CWgIiuIC4SjR5cpLxFZQfK2agDEpuCBpttI=");
 
 //        final ActorRef mqttDataport = getContext().actorOf(dataportProps, "dataport");
 //        final ActorRef mqttTTNCroftNodes = getContext().actorOf(croftNodeProps, "ttn-croft-nodes");
@@ -74,13 +73,23 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
                 0.2 // add 20% "noise" to vary the intervals slightly
         ).withSupervisorStrategy(mqttActorStrategy);
 
+        BackoffOptions stagingGatewayBackoffOptions = Backoff.onFailure(
+                stagingProps,
+                "staging",
+                Duration.create(3, TimeUnit.SECONDS),
+                Duration.create(2, TimeUnit.MINUTES),
+                0.2 // add 20% "noise" to vary the intervals slightly
+        ).withSupervisorStrategy(mqttActorStrategy);
+
         final Props dataportSupervisorProps = BackoffSupervisor.props(dataportBackoffOptions);
         final Props croftNodeSupervisorProps = BackoffSupervisor.props(croftNodeBackoffOptions);
         final Props croftGatewaySupervisorProps = BackoffSupervisor.props(croftGatewayBackoffOptions);
+        final Props stagingGatewaySupervisorProps = BackoffSupervisor.props(stagingGatewayBackoffOptions);
 
         getContext().actorOf(dataportSupervisorProps, "dataportSupervisor");
         getContext().actorOf(croftNodeSupervisorProps, "croftNodeSupervisor");
         getContext().actorOf(croftGatewaySupervisorProps, "croftGatewaySupervisor");
+//        getContext().actorOf(stagingGatewaySupervisorProps, "stagingSupervisor");
     }
 
     @Override
