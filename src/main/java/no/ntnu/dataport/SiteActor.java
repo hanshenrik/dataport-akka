@@ -80,7 +80,7 @@ public class SiteActor extends UntypedActor {
 
     @Override
     public void onReceive(Object message) {
-        log.info("Received");
+        log.info("Received {} from {}", message, getSender());
         // TODO: Handle adding of new devices through messages here, instead of reading from file!
     }
 }
