@@ -90,14 +90,21 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
         }
         else if (message instanceof MqttSubscribeMessage) {
             getMqttClient().subscribe(((MqttSubscribeMessage) message).topic);
-            log.info("Now subscribing to topic {}", ((MqttSubscribeMessage) message).topic);
+//            log.info("Now subscribing to topic {}", ((MqttSubscribeMessage) message).topic);
         }
         else if (message instanceof MqttException && getSender() == getSelf()) {
             throw (MqttException) message;
         }
         else if (message instanceof MqttPublishMessage) {
-            log.info("###: "+((MqttPublishMessage) message).mqttMessage);
+//            log.info("###: "+((MqttPublishMessage) message).mqttMessage);
             getMqttClient().publish(((MqttPublishMessage) message).topic, ((MqttPublishMessage) message).mqttMessage);
+        }
+        else if (message instanceof NetworkGraphMessage) {
+            String topic = "dataport/site/" + ((NetworkGraphMessage) message).city + "/graph";
+            MqttMessage mqttMessage = new MqttMessage(((NetworkGraphMessage) message).graph.getBytes());
+
+            mqttMessage.setRetained(true);
+            getMqttClient().publish(topic, mqttMessage);
         }
         else {
             unhandled(message);

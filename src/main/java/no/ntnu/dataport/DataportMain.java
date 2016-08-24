@@ -24,7 +24,8 @@ public class DataportMain {
         } catch (Exception e) {
 
         }
-        final ActorRef trondheim = system.actorOf(SiteActor.props("trondheim", 63.430515, 10.395053), "site-trondheim");
-        final ActorRef vejle = system.actorOf(SiteActor.props("vejle", 55.711311, 9.536354), "site-vejle");
+//        final ActorRef trondheim = system.actorOf(SiteActor.props("trondheim", 63.430515, 10.395053), "trondheim");
+//        final ActorRef simulation = system.actorOf(SiteActor.props("simulation", 63.430515, 10.395053), "simulationSite");
+        final ActorRef vejle = system.actorOf(SiteActor.props("vejle", 55.711311, 9.536354), "vejle");
     }
 }

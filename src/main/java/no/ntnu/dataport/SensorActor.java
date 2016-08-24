@@ -10,6 +10,7 @@ import com.fatboyindustrial.gsonjodatime.Converters;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import no.ntnu.dataport.types.*;
+import no.ntnu.dataport.types.Messages.*;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.joda.time.DateTime;
 import scala.concurrent.duration.Duration;
@@ -69,10 +70,13 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                 matchEvent(MqttMessage.class,
                         (message, data) ->
                         {
+                            Observation observation = convertToObservation(message);
+                            System.out.println(observation.gatewayEui);
                             context().parent().tell(String.format("Sensor going from %s to %s", stateName(), DeviceState.OK), self());
                             context().system().actorSelection("/user/externalResourceSupervisor/dataportSupervisor/dataport").tell(
                                     new Messages.MqttPublishMessage("dataport/site/"+stateData().getCity()+"/sensor/"+
-                                            stateData().getEui()+"/events/reception", message), self());
+                                            stateData().getEui()+"/events/reception",
+                                            new MqttMessage(gson.toJson(observation).getBytes())), self());
                             return goTo(DeviceState.OK).using(stateData().withLastSeen(DateTime.now()));
                             // TODO: don't use .now(), make JSON message into object before sending internally, add getTimestamp or something
                         }
@@ -99,5 +103,10 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                         }));
 
         initialize();
+    }
+
+    private Observation convertToObservation(MqttMessage message) {
+        System.out.println(new String(message.getPayload()));
+        return gson.fromJson(new String(message.getPayload()), Observation.class);
     }
 }
