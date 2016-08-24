@@ -1,6 +1,7 @@
 package no.ntnu.dataport;
 
 import akka.testkit.JavaTestKit;
+import no.ntnu.dataport.types.Messages.*;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
@@ -34,11 +35,11 @@ public class MqttActorTest {
     @Theory
     public void isConnectedOnCreation(String broker) {
         new JavaTestKit(system) {{
-            Props props = MqttActor.props(broker, "+", 0, null, null);
+            Props props = MqttActor.props(broker, 0, null, null);
             final ActorRef mqttRef = system.actorOf(props);
 
             // Ask for the connection status
-            mqttRef.tell(new DataportMain.MqttConnectionStatusMessage(), getRef());
+            mqttRef.tell(new MqttConnectionStatusMessage(), getRef());
             // Await the correct response
             expectMsgEquals(duration(DEFAULT_DURATION), true);
         }};

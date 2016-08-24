@@ -5,11 +5,13 @@ import akka.actor.UntypedActor;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
-import no.ntnu.dataport.types.DeviceType;
+import no.ntnu.dataport.types.Messages;
+import scala.concurrent.duration.Duration;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.Scanner;
+import java.util.concurrent.TimeUnit;
 
 public class SiteActor extends UntypedActor {
     LoggingAdapter log = Logging.getLogger(getContext().system(), this);
@@ -56,15 +58,16 @@ public class SiteActor extends UntypedActor {
                 double lon = Double.parseDouble(device[3]);
                 switch (device[0]) {
                     case "gateway":
-//                        log.info("Gateway: {}, {}, {}", eui, lat, lon);
                         // Create gateway actor
-                        getContext().actorOf(DeviceActor.props(DeviceType.GATEWAY, eui, lat, lon), eui);
+                        getContext().actorOf(GatewayActor.props(eui, this.name, lat, lon, Duration.create(20, TimeUnit.SECONDS)), eui);
+                        context().system().actorSelection("/user/externalResourceSupervisor/ttnCroftSupervisor/ttnCroft").tell(
+                                new Messages.MqttSubscribeMessage("gateways/" + eui + "/status"), self());
                         break;
-                    // plus some behavior ...
                     case "sensor":
-//                        log.info("Sensor: {}, {}, {}", eui, lat, lon);
                         // Create sensor actor
-                        getContext().actorOf(DeviceActor.props(DeviceType.SENSOR, eui, lat, lon), eui);
+                        context().actorOf(SensorActor.props(eui, this.name, lat, lon, Duration.create(20, TimeUnit.SECONDS)), eui);
+                        context().system().actorSelection("/user/externalResourceSupervisor/ttnCroftSupervisor/ttnCroft").tell(
+                                new Messages.MqttSubscribeMessage("nodes/" + eui + "/packets"), self());
                         break;
                     default:
                         log.warning("Unknown device type: {}", device[0]);
@@ -80,7 +83,7 @@ public class SiteActor extends UntypedActor {
 
     @Override
     public void onReceive(Object message) {
-        log.info("Received {} from {}", message, getSender());
+        log.info("Received: {} from {}", message, getSender());
         // TODO: Handle adding of new devices through messages here, instead of reading from file!
     }
 }

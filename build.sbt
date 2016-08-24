@@ -15,5 +15,7 @@ libraryDependencies ++= Seq(
   "junit" % "junit" % "4.12" % "test",
   "com.novocode" % "junit-interface" % "0.11" % "test",
   "org.eclipse.paho" % "org.eclipse.paho.client.mqttv3" % "1.1.0",
-  "joda-time" % "joda-time" % "2.9.4"
+  "joda-time" % "joda-time" % "2.9.4",
+  "com.google.code.gson" % "gson" % "2.7",
+  "com.fatboyindustrial.gson-jodatime-serialisers" % "gson-jodatime-serialisers" % "1.3.0"
 )

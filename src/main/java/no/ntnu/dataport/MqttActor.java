@@ -6,6 +6,7 @@ import akka.cluster.pubsub.DistributedPubSubMediator;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
+import no.ntnu.dataport.types.Messages.*;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
@@ -15,18 +16,17 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
     /**
      * Create Props for an actor of this type.
      * @param broker    The broker address to be passed to this actor’s constructor.
-     * @param topic     The topic the actor should subscribe to.
      * @param qos       The quality of service requirements for the MQTT connection.
      * @return a Props for creating this actor, which can then be further configured
      *         (e.g. calling `.withDispatcher()` on it)
      */
-    public static Props props(final String broker, final String topic, final int qos, final String username, final String password) {
+    public static Props props(final String broker, final int qos, final String username, final String password) {
         return Props.create(new Creator<MqttActor>() {
             private static final long serialVersionUID = 1L;
 
             @Override
             public MqttActor create() throws Exception {
-                return new MqttActor(broker, topic, qos, username, password);
+                return new MqttActor(broker, qos, username, password);
             }
         });
     }
@@ -38,7 +38,6 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
     private static boolean INTERNAL_FAULT_HANDLING = false;
 
     final String broker;
-    final String topic;
     final int qos;
     final String clientId;
     final String content;
@@ -52,10 +51,9 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
         log.info("Yo!");
     }
 
-    public MqttActor(String broker, String topic, int qos, String username, String password) throws MqttException {
-        log.info("Constructor called with broker: {}, topic: {}, username: {}, password: {}", broker, topic, username, password);
+    public MqttActor(String broker, int qos, String username, String password) throws MqttException {
+        log.info("Constructor called with broker: {}, username: {}, password: {}", broker, username, password);
         this.broker     = broker;
-        this.topic      = topic;
         this.qos        = qos;
         this.username   = username;
         this.password   = password;
@@ -87,11 +85,19 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
     @Override
     public void onReceive(Object message) throws Exception {
         log.info("Got: {} from {}", message, getSender());
-        if (message instanceof DataportMain.MqttConnectionStatusMessage) {
+        if (message instanceof MqttConnectionStatusMessage) {
             getSender().tell(getState(), getSelf());
+        }
+        else if (message instanceof MqttSubscribeMessage) {
+            getMqttClient().subscribe(((MqttSubscribeMessage) message).topic);
+            log.info("Now subscribing to topic {}", ((MqttSubscribeMessage) message).topic);
         }
         else if (message instanceof MqttException && getSender() == getSelf()) {
             throw (MqttException) message;
+        }
+        else if (message instanceof MqttPublishMessage) {
+            log.info("###: "+((MqttPublishMessage) message).mqttMessage);
+            getMqttClient().publish(((MqttPublishMessage) message).topic, ((MqttPublishMessage) message).mqttMessage);
         }
         else {
             unhandled(message);
@@ -110,9 +116,6 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
         if (INTERNAL_FAULT_HANDLING) {
             try {
                 getMqttClient().connect(connectionOptions);
-                getMqttClient().subscribe(topic);
-                log.info("Subscribed to topic: {}", topic);
-                // TODO: Set state to CONNECTED
             } catch(MqttException me) {
                 switch (me.getReasonCode()) {
                     case MqttException.REASON_CODE_SERVER_CONNECT_ERROR:
@@ -121,12 +124,12 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
                     default:
                         log.error(me, "Unhandled exception!!");
                 }
-            }        // TODO: Set state to DISCONNECTED
+                setState(State.DISCONNECTED);
+            }
 
         }
         else {
             getMqttClient().connect(connectionOptions);
-            getMqttClient().subscribe(topic);
         }
     }
 
@@ -135,7 +138,7 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
         setState(State.DISCONNECTED);
         getContext().parent().tell("I lost my MQTT connection!", getSelf());
         // TODO: Can we get this to just throw the exception, so that it is handled in the supervisors
-        // SupervisorStragegy? Sending an excplicit message for this failure is probably not the cleanest
+        // SupervisorStragegy? Sending an excplicit mqttMessage for this failure is probably not the cleanest
         // approach...
         // TODO: Set state to TRYING_TO_CONNECT
         // TODO: Tell parent i changed state (always do this?)
@@ -143,7 +146,7 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
             log.error(cause, "Lost MQTT connection! MqttClient's automatic reconnect kicking in");
             // do nothing, Paho automatic retry should be set to true
         } else {
-            // Send exception as message to self and throw it there, since this method doesn't allow throwing exceptions
+            // Send exception as mqttMessage to self and throw it there, since this method doesn't allow throwing exceptions
             getSelf().tell(new MqttException(cause), getSelf());
         }
     }
@@ -162,12 +165,10 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
     @Override
     public void messageArrived(String topic, MqttMessage message) {
         log.info("MQTT Received: '{}' on topic '{}'", message, topic);
-        String in = message.toString();
         // TODO: Maybe do some filtering with the input?
-        String out = in.toUpperCase();
-        mediator.tell(new DistributedPubSubMediator.Publish(topic, out), getSelf());
+        mediator.tell(new DistributedPubSubMediator.Publish(topic, message), getSelf());
         // OBS! Do not publish to same MQTT broker on same topic, as this will cause a loop!
-        // Better to tell another actor a message was received, and let this actor publish to any relevant
+        // Better to tell another actor a mqttMessage was received, and let this actor publish to any relevant
         // MQTT topics it might be connected to?
 //        getMqttClient().publish(topic, new MqttMessage(content.getBytes()));
 //        log.info("Published to topic: {}", topic);

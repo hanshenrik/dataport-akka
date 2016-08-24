@@ -8,7 +8,6 @@ import akka.japi.pf.DeciderBuilder;
 import akka.pattern.Backoff;
 import akka.pattern.BackoffOptions;
 import akka.pattern.BackoffSupervisor;
-import no.ntnu.dataport.DataportMain.*;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import scala.concurrent.duration.Duration;
 
@@ -19,8 +18,6 @@ import static akka.actor.SupervisorStrategy.*;
 
 public class ExternalResourceSupervisorActor extends UntypedActor {
     LoggingAdapter log = Logging.getLogger(getContext().system(), this);
-
-    private static final int MAX_NUMBER_OF_ACTOR_RESTARTS = 5;
 
     public static Props props() {
         return Props.create(new Creator<ExternalResourceSupervisorActor>() {
@@ -34,20 +31,10 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
     }
 
     public ExternalResourceSupervisorActor() {
-        Props dataportProps = MqttActor.props("tcp://dataport.item.ntnu.no:1883", "hh-test", 0, null, null);
-        Props croftNodeProps = MqttActor.props("tcp://croft.thethings.girovito.nl:1883", "nodes/02031902/packets", 0, null, null);
-        Props croftGatewayProps = MqttActor.props("tcp://croft.thethings.girovito.nl:1883", "gateways/1DEE192E3D82B8E4/status", 0, null, null);
-        Props stagingProps = MqttActor.props("tcp://staging.thethingsnetwork.org:1883", "+/devices/+/up", 0, "0807060504030201", "I0f+e1W+CWgIiuIC4SjR5cpLxFZQfK2agDEpuCBpttI=");
-
-//        final ActorRef mqttDataport = getContext().actorOf(dataportProps, "dataport");
-//        final ActorRef mqttTTNCroftNodes = getContext().actorOf(croftNodeProps, "ttn-croft-nodes");
-//        final ActorRef mqttTTNCroftGateways = getContext().actorOf(croftGatewayProps, "ttn-croft-gateways");
-//        final ActorRef mqttStaging = getContext().actorOf(stagingProps, "ttn-staging");
-
-//        mqttTTNCroftNodes.tell(new MqttConnectMessage(), getSelf());
-//        mqttTTNCroftGateways.tell(new MqttConnectMessage(), getSelf());
-//        mqttStaging.tell(new MqttConnectMessage(), getSelf());
-
+        // TODO: have as list/map instead, not variables
+        Props dataportProps = MqttActor.props("tcp://dataport.item.ntnu.no:1883", 0, null, null);
+        Props ttnCroftProps = MqttActor.props("tcp://croft.thethings.girovito.nl:1883", 0, null, null);
+        Props stagingProps = MqttActor.props("tcp://staging.thethingsnetwork.org:1883", 0, "70B3D57ED0000B79", "urqQDLAgV/G9JWI8/N88inCuUWDyYqwvOfoq2MeQc7k=");
 
         BackoffOptions dataportBackoffOptions= Backoff.onFailure(
                 dataportProps,
@@ -57,17 +44,9 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
                 0.2 // add 20% "noise" to vary the intervals slightly
             ).withSupervisorStrategy(mqttActorStrategy);
 
-        BackoffOptions croftNodeBackoffOptions = Backoff.onFailure(
-                croftNodeProps,
-                "croftNode",
-                Duration.create(3, TimeUnit.SECONDS),
-                Duration.create(2, TimeUnit.MINUTES),
-                0.2 // add 20% "noise" to vary the intervals slightly
-        ).withSupervisorStrategy(mqttActorStrategy);
-
-        BackoffOptions croftGatewayBackoffOptions = Backoff.onFailure(
-                croftGatewayProps,
-                "croftGateway",
+        BackoffOptions ttnCroftBackoffOptions = Backoff.onFailure(
+                ttnCroftProps,
+                "ttnCroft",
                 Duration.create(3, TimeUnit.SECONDS),
                 Duration.create(2, TimeUnit.MINUTES),
                 0.2 // add 20% "noise" to vary the intervals slightly
@@ -82,14 +61,12 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
         ).withSupervisorStrategy(mqttActorStrategy);
 
         final Props dataportSupervisorProps = BackoffSupervisor.props(dataportBackoffOptions);
-        final Props croftNodeSupervisorProps = BackoffSupervisor.props(croftNodeBackoffOptions);
-        final Props croftGatewaySupervisorProps = BackoffSupervisor.props(croftGatewayBackoffOptions);
+        final Props ttnCroftSupervisorProps = BackoffSupervisor.props(ttnCroftBackoffOptions);
         final Props stagingGatewaySupervisorProps = BackoffSupervisor.props(stagingGatewayBackoffOptions);
 
         getContext().actorOf(dataportSupervisorProps, "dataportSupervisor");
-        getContext().actorOf(croftNodeSupervisorProps, "croftNodeSupervisor");
-        getContext().actorOf(croftGatewaySupervisorProps, "croftGatewaySupervisor");
-//        getContext().actorOf(stagingGatewaySupervisorProps, "stagingSupervisor");
+        getContext().actorOf(ttnCroftSupervisorProps, "ttnCroftSupervisor");
+        getContext().actorOf(stagingGatewaySupervisorProps, "stagingSupervisor");
     }
 
     @Override
