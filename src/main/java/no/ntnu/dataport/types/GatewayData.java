@@ -6,20 +6,20 @@ import scala.concurrent.duration.FiniteDuration;
 public class GatewayData {
     private final String eui;
     private String city;
-    private double latitude;
-    private double longitude;
+    private String appEui;
+    private Position position;
     private FiniteDuration timeout;
     private DeviceState status;
 
     private DateTime lastSeen;
     private double maxObservedRange;
 
-    public GatewayData(String eui, String city, double latitude, double longitude, FiniteDuration timeout) {
-        this.maxObservedRange = 2000;
+    public GatewayData(String eui, String appEui, String city, Position position, FiniteDuration timeout) {
+        this.maxObservedRange = 0;
         this.eui = eui;
+        this.appEui = appEui;
         this.city = city;
-        this.latitude = latitude;
-        this.longitude = longitude;
+        this.position = position;
         this.timeout = timeout;
     }
 
@@ -28,7 +28,9 @@ public class GatewayData {
     }
 
     public GatewayData withMaxObservedRange(double maxObservedRange) {
-        this.maxObservedRange = maxObservedRange;
+        if (maxObservedRange > this.maxObservedRange) {
+            this.maxObservedRange = maxObservedRange;
+        }
         return this;
     }
 
@@ -59,12 +61,14 @@ public class GatewayData {
         return this;
     }
 
-    public double getLatitude() {
-        return latitude;
+
+    public Position getPosition() {
+        return position;
     }
 
-    public double getLongitude() {
-        return longitude;
+    public GatewayData withPosition(Position position) {
+        this.position = position;
+        return this;
     }
 
     public FiniteDuration getTimeout() {

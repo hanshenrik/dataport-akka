@@ -8,6 +8,7 @@ import akka.japi.pf.DeciderBuilder;
 import akka.pattern.Backoff;
 import akka.pattern.BackoffOptions;
 import akka.pattern.BackoffSupervisor;
+import no.ntnu.dataport.utils.SecretStuff;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import scala.concurrent.duration.Duration;
 
@@ -32,41 +33,42 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
 
     public ExternalResourceSupervisorActor() {
         // TODO: have as list/map instead, not variables
-        Props dataportProps = MqttActor.props("tcp://dataport.item.ntnu.no:1883", 0, null, null);
-        Props ttnCroftProps = MqttActor.props("tcp://croft.thethings.girovito.nl:1883", 0, null, null);
-        Props stagingProps = MqttActor.props("tcp://staging.thethingsnetwork.org:1883", 0, "70B3D57ED0000B79", "urqQDLAgV/G9JWI8/N88inCuUWDyYqwvOfoq2MeQc7k=");
+        Props dataportBrokerProps = MqttActor.props("tcp://dataport.item.ntnu.no:1883", 0, null, null);
+        Props ttnCroftBrokerProps = MqttActor.props("tcp://croft.thethings.girovito.nl:1883", 0, null, null);
+        Props ttnStagingBrokerProps = MqttActor.props("tcp://staging.thethingsnetwork.org:1883", 0, SecretStuff.VEJLE_APP_EUI,
+                SecretStuff.VEJLE_APP_KEY);
 
-        BackoffOptions dataportBackoffOptions= Backoff.onFailure(
-                dataportProps,
-                "dataport",
+        BackoffOptions dataportBrokerBackoffOptions= Backoff.onFailure(
+                dataportBrokerProps,
+                "dataportBroker",
                 Duration.create(3, TimeUnit.SECONDS),
                 Duration.create(2, TimeUnit.MINUTES),
                 0.2 // add 20% "noise" to vary the intervals slightly
             ).withSupervisorStrategy(mqttActorStrategy);
 
-        BackoffOptions ttnCroftBackoffOptions = Backoff.onFailure(
-                ttnCroftProps,
-                "ttnCroft",
+        BackoffOptions ttnCroftBrokerBackoffOptions = Backoff.onFailure(
+                ttnCroftBrokerProps,
+                "ttnCroftBroker",
                 Duration.create(3, TimeUnit.SECONDS),
                 Duration.create(2, TimeUnit.MINUTES),
                 0.2 // add 20% "noise" to vary the intervals slightly
         ).withSupervisorStrategy(mqttActorStrategy);
 
-        BackoffOptions stagingGatewayBackoffOptions = Backoff.onFailure(
-                stagingProps,
-                "staging",
+        BackoffOptions ttnStagingBrokerBackoffOptions = Backoff.onFailure(
+                ttnStagingBrokerProps,
+                "ttnStagingBroker",
                 Duration.create(3, TimeUnit.SECONDS),
                 Duration.create(2, TimeUnit.MINUTES),
                 0.2 // add 20% "noise" to vary the intervals slightly
         ).withSupervisorStrategy(mqttActorStrategy);
 
-        final Props dataportSupervisorProps = BackoffSupervisor.props(dataportBackoffOptions);
-        final Props ttnCroftSupervisorProps = BackoffSupervisor.props(ttnCroftBackoffOptions);
-        final Props stagingGatewaySupervisorProps = BackoffSupervisor.props(stagingGatewayBackoffOptions);
+        final Props dataportBrokerSupervisorProps = BackoffSupervisor.props(dataportBrokerBackoffOptions);
+        final Props ttnCroftBrokerSupervisorProps = BackoffSupervisor.props(ttnCroftBrokerBackoffOptions);
+        final Props ttnStagingBrokerSupervisorProps = BackoffSupervisor.props(ttnStagingBrokerBackoffOptions);
 
-        getContext().actorOf(dataportSupervisorProps, "dataportSupervisor");
-        getContext().actorOf(ttnCroftSupervisorProps, "ttnCroftSupervisor");
-        getContext().actorOf(stagingGatewaySupervisorProps, "stagingSupervisor");
+        getContext().actorOf(dataportBrokerSupervisorProps, "dataportBrokerSupervisor");
+        getContext().actorOf(ttnCroftBrokerSupervisorProps, "ttnCroftBrokerSupervisor");
+        getContext().actorOf(ttnStagingBrokerSupervisorProps, "ttnStagingBrokerSupervisor");
     }
 
     @Override

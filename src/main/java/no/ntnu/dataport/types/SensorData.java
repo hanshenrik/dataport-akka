@@ -8,19 +8,22 @@ import scala.concurrent.duration.FiniteDuration;
 public class SensorData {
     private final String eui;
     private String city;
-    private double latitude;
-    private double longitude;
+    private String appEui;
+
+    private Position position;
     private FiniteDuration timeout;
 
     private DeviceState status;
+    private double co2;
+    private double batteryLevel;
     private DateTime lastSeen;
-    private MqttMessage lastObservation;
+    private Messages.Observation lastObservation;
 
-    public SensorData(String eui, String city, double latitude, double longitude, FiniteDuration timeout) {
+    public SensorData(String eui, String appEui, String city, Position position, FiniteDuration timeout) {
         this.eui = eui;
+        this.appEui = appEui;
         this.city = city;
-        this.latitude = latitude;
-        this.longitude = longitude;
+        this.position = position;
         this.timeout = timeout;
     }
 
@@ -33,6 +36,10 @@ public class SensorData {
         return eui;
     }
 
+    public String getAppEui() {
+        return appEui;
+    }
+
     public String getCity() {
         return city;
     }
@@ -42,21 +49,12 @@ public class SensorData {
         return this;
     }
 
-    public double getLatitude() {
-        return latitude;
+    public Position getPosition() {
+        return position;
     }
 
-    public SensorData withLatitude(double latitude) {
-        this.latitude = latitude;
-        return this;
-    }
-
-    public double getLongitude() {
-        return longitude;
-    }
-
-    public SensorData withLongitude(double longitude) {
-        this.longitude = longitude;
+    public SensorData withPosition(Position position) {
+        this.position = position;
         return this;
     }
 
@@ -78,12 +76,32 @@ public class SensorData {
         return this;
     }
 
-    public MqttMessage getLastObservation() {
+    public Messages.Observation getLastObservation() {
         return lastObservation;
     }
 
-    public SensorData withLastObservation(MqttMessage observation) {
+    public void setLastObservation(Messages.Observation lastObservation) {
+        this.lastObservation = lastObservation;
+    }
+
+    public SensorData withLastObservation(Messages.Observation observation) {
         this.lastObservation = observation;
         return this;
+    }
+
+    public double getCo2() {
+        return co2;
+    }
+
+    public void setCo2(double co2) {
+        this.co2 = co2;
+    }
+
+    public double getBatteryLevel() {
+        return batteryLevel;
+    }
+
+    public void setBatteryLevel(double batteryLevel) {
+        this.batteryLevel = batteryLevel;
     }
 }

@@ -6,17 +6,22 @@ import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
 import com.google.gson.Gson;
+import com.mashape.unirest.http.HttpResponse;
+import com.mashape.unirest.http.JsonNode;
+import com.mashape.unirest.http.Unirest;
+import com.mashape.unirest.http.exceptions.UnirestException;
 import no.ntnu.dataport.types.DeviceType;
 import no.ntnu.dataport.types.Messages.*;
 import no.ntnu.dataport.types.NetworkComponent;
 import no.ntnu.dataport.types.Position;
+import no.ntnu.dataport.utils.SecretStuff;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import scala.concurrent.duration.Duration;
+import scala.concurrent.duration.FiniteDuration;
 
-import java.io.File;
-import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 
 public class SiteActor extends UntypedActor {
@@ -25,74 +30,82 @@ public class SiteActor extends UntypedActor {
     /**
      * Create Props for an actor of this type.
      * @param name      The name of the city
-     * @param latitude  The latitude of the city
-     * @param longitude The longitude of the city
+     * @param appEui    The TTN appEui for the application
+     * @param position  The position of the city, given as latitude and longitude
      * @return a Props for creating this actor, which can then be further configured
      *         (e.g. calling `.withDispatcher()` on it)
      */
-    public static Props props(final String name, final double latitude, final double longitude) {
+    public static Props props(final String name, final String appEui, final Position position) {
         return Props.create(new Creator<SiteActor>() {
             private static final long serialVersionUID = 1L;
 
             @Override
             public SiteActor create() throws Exception {
-                return new SiteActor(name, latitude, longitude);
+                return new SiteActor(name, appEui, position);
             }
         });
     }
 
     final String name;
-    final double latitude;
-    final double longitude;
+    final String appEui;
+    final Position position;
     List<NetworkComponent> networkComponents = new ArrayList<>();
 
-    public SiteActor(String name, double latitude, double longitude) {
-        log.info("Constructor called with name: {}, lat: {}, lon: {}", name, latitude, longitude);
+    public SiteActor(String name, String appEui, Position position) {
+        log.info("Constructor called with name: {}, lat: {}, lon: {}", name, position.lat, position.lon);
         this.name = name;
-        this.latitude = latitude;
-        this.longitude = longitude;
+        this.appEui = appEui;
+        this.position = position;
         try {
-            ClassLoader classLoader = this.getClass().getClassLoader();
-            File file = new File(classLoader.getResource("devices-" + name + ".csv").getFile());
-            Scanner scanner = new Scanner(file);
-            String[] device;
-
-            while (scanner.hasNextLine()) {
-                // TODO: add validation check
-                device = scanner.nextLine().split(",");
-                String eui = device[1];
-                double lat = Double.parseDouble(device[2]);
-                double lon = Double.parseDouble(device[3]);
-                switch (device[0]) {
+            HttpResponse<JsonNode> jsonResponse = Unirest.get("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + name)
+                    .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
+                    .header("accept", "application/json")
+                    .asJson();
+            JSONArray devices = jsonResponse.getBody().getObject().getJSONArray("records");
+            String eui, type;
+            Position pos;
+            FiniteDuration timeout;
+            for (Object device : devices) {
+                JSONObject fields = ((JSONObject) device).getJSONObject("fields");
+                eui = fields.getString("eui");
+                type = fields.getString("type");
+                pos = new Position(fields.getDouble("latitude"), fields.getDouble("longitude"));
+                timeout = Duration.create(fields.getInt("timeout"), TimeUnit.SECONDS);
+                switch (type.toLowerCase()) {
                     case "gateway":
                         // Create gateway actor
-                        getContext().actorOf(GatewayActor.props(eui, this.name, lat, lon, Duration.create(20, TimeUnit.SECONDS)), eui);
-                        context().system().actorSelection("/user/externalResourceSupervisor/ttnCroftSupervisor/ttnCroft").tell(
+                        getContext().actorOf(GatewayActor.props(eui, appEui, this.name, pos, timeout), eui);
+                        networkComponents.add(new NetworkComponent(DeviceType.GATEWAY, eui, pos));
+
+                        // Tell the MqttActor to listen to status messages from this gateway
+                        context().system().actorSelection("/user/externalResourceSupervisor/ttnCroftBrokerSupervisor/ttnCroftBroker").tell(
                                 new MqttSubscribeMessage("gateways/" + eui + "/status"), self());
-                        networkComponents.add(new NetworkComponent(DeviceType.GATEWAY, eui, new Position(lat, lon)));
                         break;
                     case "sensor":
                         // Create sensor actor
-                        context().actorOf(SensorActor.props(eui, this.name, lat, lon, Duration.create(20, TimeUnit.SECONDS)), eui);
-                        context().system().actorSelection("/user/externalResourceSupervisor/ttnCroftSupervisor/ttnCroft").tell(
+                        context().actorOf(SensorActor.props(eui, appEui, this.name, pos, timeout), eui);
+                        networkComponents.add(new NetworkComponent(DeviceType.SENSOR, eui, pos));
+
+                        // Tell the MqttActor to listen to events from this sensor
+                        // TODO: This is for legacy purposes. When the Trondheim application is setup properly, drop this topic structure!
+                        context().system().actorSelection("/user/externalResourceSupervisor/ttnCroftBrokerSupervisor/ttnCroftBroker").tell(
                                 new MqttSubscribeMessage("nodes/" + eui + "/packets"), self());
-                        networkComponents.add(new NetworkComponent(DeviceType.SENSOR, eui, new Position(lat, lon)));
+                        context().system().actorSelection("/user/externalResourceSupervisor/ttnStagingBrokerSupervisor/ttnStagingBroker").tell(
+                                new MqttSubscribeMessage(appEui + "/devices/" + eui + "/up"), self());
                         break;
                     default:
-                        log.warning("Unknown device type: {}", device[0]);
+                        log.warning("Unknown device type: {}", type);
                 }
             }
-
-            scanner.close();
         }
-        catch (FileNotFoundException e) {
-            log.error(e, "File not found");
+        catch (UnirestException e) {
+            e.printStackTrace();
         }
 
         // TODO: do this on a regular basis. Will that send the graph message (retained) to all connected clients?
         String graph = getNetworkGraph();
         NetworkGraphMessage networkGraphMessage = new NetworkGraphMessage(graph, this.name);
-        context().system().actorSelection("/user/externalResourceSupervisor/dataportSupervisor/dataport")
+        context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker")
                 .tell(networkGraphMessage, self());
     }
 

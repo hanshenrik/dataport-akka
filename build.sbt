@@ -1,11 +1,13 @@
+import NativePackagerHelper._
+
 name := """dataport-akka"""
 
-version := "1.0"
+version := "0.1"
 
-scalaVersion := "2.11.6"
+scalaVersion := "2.11.7"
 ivyScala := ivyScala.value map { _.copy(overrideScalaVersion = true) }
 
-lazy val akkaVersion = "2.4.8"
+lazy val akkaVersion = "2.4.9"
 
 libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
@@ -17,5 +19,12 @@ libraryDependencies ++= Seq(
   "org.eclipse.paho" % "org.eclipse.paho.client.mqttv3" % "1.1.0",
   "joda-time" % "joda-time" % "2.9.4",
   "com.google.code.gson" % "gson" % "2.7",
-  "com.fatboyindustrial.gson-jodatime-serialisers" % "gson-jodatime-serialisers" % "1.3.0"
+  "com.fatboyindustrial.gson-jodatime-serialisers" % "gson-jodatime-serialisers" % "1.3.0",
+  "net.gpedro.integrations.slack" % "slack-webhook" % "1.1.1",
+  "com.mashape.unirest" % "unirest-java" % "1.4.9"
 )
+
+enablePlugins(JavaServerAppPackaging)
+mainClass in Compile := Some("no.ntnu.dataport.DataportMain")
+
+licenses := Seq(("CC0", url("http://creativecommons.org/publicdomain/zero/1.0")))

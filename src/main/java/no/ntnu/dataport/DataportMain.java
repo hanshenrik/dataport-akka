@@ -1,13 +1,12 @@
 package no.ntnu.dataport;
 
 import akka.actor.*;
-import akka.actor.dsl.Creators;
-import akka.pattern.Backoff;
-import akka.pattern.BackoffSupervisor;
-import scala.concurrent.duration.Duration;
+import no.ntnu.dataport.types.Position;
+import no.ntnu.dataport.utils.SecretStuff;
 
-import java.io.Serializable;
-import java.util.concurrent.TimeUnit;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
 
 public class DataportMain {
 
@@ -24,8 +23,8 @@ public class DataportMain {
         } catch (Exception e) {
 
         }
-//        final ActorRef trondheim = system.actorOf(SiteActor.props("trondheim", 63.430515, 10.395053), "trondheim");
-//        final ActorRef simulation = system.actorOf(SiteActor.props("simulation", 63.430515, 10.395053), "simulationSite");
-        final ActorRef vejle = system.actorOf(SiteActor.props("vejle", 55.711311, 9.536354), "vejle");
+
+        final ActorRef trondheim = system.actorOf(SiteActor.props("trondheim", "+", new Position(63.430515, 10.395053)), "trondheim");
+        final ActorRef vejle = system.actorOf(SiteActor.props("vejle", SecretStuff.VEJLE_APP_EUI, new Position(55.711311, 9.536354)), "vejle");
     }
 }

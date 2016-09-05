@@ -44,7 +44,6 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
     final String username;
     final String password;
     final MqttConnectOptions connectionOptions;
-//    MqttClient mqttClient;
 
     @Override
     public void preStart() {
@@ -171,7 +170,7 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
 
     @Override
     public void messageArrived(String topic, MqttMessage message) {
-        log.info("MQTT Received: '{}' on topic '{}'", message, topic);
+        log.info("MQTT Received on topic {} message: '{}'", topic, message);
         // TODO: Maybe do some filtering with the input?
         mediator.tell(new DistributedPubSubMediator.Publish(topic, message), getSelf());
         // OBS! Do not publish to same MQTT broker on same topic, as this will cause a loop!
