@@ -9,6 +9,8 @@ import akka.japi.Creator;
 import com.fatboyindustrial.gsonjodatime.Converters;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.mashape.unirest.http.JsonNode;
+import com.mashape.unirest.http.Unirest;
 import net.gpedro.integrations.slack.SlackApi;
 import net.gpedro.integrations.slack.SlackMessage;
 import no.ntnu.dataport.types.*;
@@ -28,13 +30,13 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
      * @return a Props for creating this actor, which can then be further configured
      * (e.g. calling `.withDispatcher()` on it)
      */
-    public static Props props(final String eui, String appEui, String city, Position position, FiniteDuration timeout) {
+    public static Props props(final String eui, final String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
         return Props.create(new Creator<GatewayActor>() {
             private static final long serialVersionUID = 1L;
 
             @Override
             public GatewayActor create() throws Exception {
-                return new GatewayActor(eui, appEui, city, position, timeout);
+                return new GatewayActor(eui, airtableID, appEui, city, position, timeout);
             }
         });
     }
@@ -43,15 +45,17 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
     ActorRef mediator;
     Gson gson;
 
-    public GatewayActor(final String eui, String appEui, String city, Position position, FiniteDuration timeout) {
-        this.initialData = new GatewayData(eui, appEui, city, position, timeout);
+    public GatewayActor(final String eui, final String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
+        this.initialData = new GatewayData(eui, airtableID, appEui, city, position, timeout);
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
-//        this.timeout = timeout;
         setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
         String internalTopic = "gateways/" + eui + "/status";
         mediator.tell(new DistributedPubSubMediator.Subscribe(internalTopic, self()), self());
+    }
+
+    public void handler(DeviceState from, DeviceState to) {
     }
 
     {
@@ -70,6 +74,13 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                 matchEvent(MqttMessage.class,
                         (message, data) ->
                         {
+                            Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
+                                .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
+                                .header("Content-Type", "application/json")
+                                .header("accept", "application/json")
+                                .body(new JsonNode("{fields: {status: " + DeviceState.OK + "}}"))
+                                .asJson();
+
                             context().parent().tell(String.format("Gateway going from %s to %s", stateName(), DeviceState.OK), self());
                             context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
                                     new Messages.MqttPublishMessage("dataport/site/"+stateData().getCity()+"/gateway/"+
@@ -80,7 +91,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                         }
                 ).event(Position.class,
                         (message, data) -> {
-                            log().info("New observation from position {} sent to gateway!", message);
+                            log().info("New observation received at gateway!");
                             double distance = (int) Haversine.distance(message, stateData().getPosition());
                             log().info("Distance calculated to be: {}", distance);
                             context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
@@ -93,11 +104,18 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                         })
         );
 
-        when(DeviceState.OK, null,
+        when(DeviceState.OK, null, // timeout duration is set in the constructor
                 matchEventEquals(StateTimeout(),
                         (event, data) -> {
                             mediator.tell(new DistributedPubSubMediator.Publish("timeouts", "I timed out! I was last seen: "+
                                     stateData().getLastSeen()), self());
+
+                            Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
+                                .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
+                                .header("Content-Type", "application/json")
+                                .header("accept", "application/json")
+                                .body(new JsonNode("{fields: {status: " + DeviceState.UNKNOWN + "}}"))
+                                .asJson();
 
                             SlackApi api = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
                             api.call(new SlackMessage("Timeout! Gateway "+data.getEui()+" in "+data.getCity() + " has been inactive for "+stateData().getTimeout()));
@@ -128,6 +146,8 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                                                     .withLastSeen(DateTime.now())).getBytes())), self());
                             return stay();
                         }));
+
+        onTransition(this::handler);
 
         initialize();
     }

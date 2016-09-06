@@ -4,10 +4,6 @@ import akka.actor.*;
 import no.ntnu.dataport.types.Position;
 import no.ntnu.dataport.utils.SecretStuff;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Properties;
-
 public class DataportMain {
 
     public static void main(String[] args) {

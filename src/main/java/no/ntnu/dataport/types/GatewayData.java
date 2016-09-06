@@ -5,6 +5,7 @@ import scala.concurrent.duration.FiniteDuration;
 
 public class GatewayData {
     private final String eui;
+    private final transient String airtableID;
     private String city;
     private String appEui;
     private Position position;
@@ -14,13 +15,18 @@ public class GatewayData {
     private DateTime lastSeen;
     private double maxObservedRange;
 
-    public GatewayData(String eui, String appEui, String city, Position position, FiniteDuration timeout) {
-        this.maxObservedRange = 0;
+    public GatewayData(String eui, String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
         this.eui = eui;
+        this.airtableID = airtableID;
         this.appEui = appEui;
         this.city = city;
         this.position = position;
         this.timeout = timeout;
+        this.maxObservedRange = 0;
+    }
+
+    public String getAirtableID() {
+        return airtableID;
     }
 
     public double getMaxObservedRange() {

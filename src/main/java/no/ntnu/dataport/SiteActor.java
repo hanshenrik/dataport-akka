@@ -10,12 +10,14 @@ import com.mashape.unirest.http.HttpResponse;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import com.mashape.unirest.http.exceptions.UnirestException;
+import no.ntnu.dataport.types.DeviceState;
 import no.ntnu.dataport.types.DeviceType;
 import no.ntnu.dataport.types.Messages.*;
 import no.ntnu.dataport.types.NetworkComponent;
 import no.ntnu.dataport.types.Position;
 import no.ntnu.dataport.utils.SecretStuff;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import scala.concurrent.duration.Duration;
 import scala.concurrent.duration.FiniteDuration;
@@ -58,24 +60,33 @@ public class SiteActor extends UntypedActor {
         this.position = position;
         try {
             HttpResponse<JsonNode> jsonResponse = Unirest.get("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + name)
-                    .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
-                    .header("accept", "application/json")
-                    .asJson();
+                .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
+                .header("accept", "application/json")
+                .asJson();
             JSONArray devices = jsonResponse.getBody().getObject().getJSONArray("records");
-            String eui, type;
+
+            String airtableID, eui, type;
             Position pos;
             FiniteDuration timeout;
+            DeviceState status;
             for (Object device : devices) {
+                airtableID = ((JSONObject) device).getString("id");
                 JSONObject fields = ((JSONObject) device).getJSONObject("fields");
                 eui = fields.getString("eui");
                 type = fields.getString("type");
                 pos = new Position(fields.getDouble("latitude"), fields.getDouble("longitude"));
                 timeout = Duration.create(fields.getInt("timeout"), TimeUnit.SECONDS);
+                try {
+                    status = DeviceState.valueOf(fields.getString("status"));
+                } catch (JSONException e) {
+                    status = DeviceState.UNKNOWN;
+                    log.info("Device {} didn't have status in Airtable, setting status to {}", eui, status);
+                }
                 switch (type.toLowerCase()) {
                     case "gateway":
                         // Create gateway actor
-                        getContext().actorOf(GatewayActor.props(eui, appEui, this.name, pos, timeout), eui);
-                        networkComponents.add(new NetworkComponent(DeviceType.GATEWAY, eui, pos));
+                        getContext().actorOf(GatewayActor.props(eui, airtableID, appEui, this.name, pos, timeout), eui);
+                        networkComponents.add(new NetworkComponent(DeviceType.GATEWAY, eui, pos, status));
 
                         // Tell the MqttActor to listen to status messages from this gateway
                         context().system().actorSelection("/user/externalResourceSupervisor/ttnCroftBrokerSupervisor/ttnCroftBroker").tell(
@@ -83,8 +94,8 @@ public class SiteActor extends UntypedActor {
                         break;
                     case "sensor":
                         // Create sensor actor
-                        context().actorOf(SensorActor.props(eui, appEui, this.name, pos, timeout), eui);
-                        networkComponents.add(new NetworkComponent(DeviceType.SENSOR, eui, pos));
+                        context().actorOf(SensorActor.props(eui, airtableID, appEui, this.name, pos, timeout), eui);
+                        networkComponents.add(new NetworkComponent(DeviceType.SENSOR, eui, pos, status));
 
                         // Tell the MqttActor to listen to events from this sensor
                         // TODO: This is for legacy purposes. When the Trondheim application is setup properly, drop this topic structure!

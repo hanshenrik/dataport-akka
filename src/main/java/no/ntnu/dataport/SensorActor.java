@@ -9,6 +9,8 @@ import akka.japi.Creator;
 import com.fatboyindustrial.gsonjodatime.Converters;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.mashape.unirest.http.JsonNode;
+import com.mashape.unirest.http.Unirest;
 import net.gpedro.integrations.slack.SlackApi;
 import net.gpedro.integrations.slack.SlackMessage;
 import no.ntnu.dataport.types.*;
@@ -16,6 +18,7 @@ import no.ntnu.dataport.types.Messages.*;
 import no.ntnu.dataport.utils.SecretStuff;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.joda.time.DateTime;
+import scala.Option;
 import scala.concurrent.duration.FiniteDuration;
 
 public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
@@ -27,28 +30,26 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
      * @return a Props for creating this actor, which can then be further configured
      * (e.g. calling `.withDispatcher()` on it)
      */
-    public static Props props(final String eui, String appEui, String city, Position position, FiniteDuration timeout) {
+    public static Props props(final String eui, final String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
         return Props.create(new Creator<SensorActor>() {
             private static final long serialVersionUID = 1L;
 
             @Override
             public SensorActor create() throws Exception {
-                return new SensorActor(eui, appEui, city, position, timeout);
+                return new SensorActor(eui, airtableID, appEui, city, position, timeout);
             }
         });
     }
 
     SensorData initialData;
     ActorRef mediator;
-    FiniteDuration timeout;
     Gson gson;
 
-    public SensorActor(final String eui, String appEui, String city, Position position, FiniteDuration timeout) {
-        log().info("Constructor called with timeout: {}, eui: {}, lat: {}, lon: {}", timeout, eui, position);
-        this.initialData = new SensorData(eui, appEui, city, position, timeout);
+    public SensorActor(final String eui, final String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
+        this.initialData = new SensorData(eui, airtableID, appEui, city, position, timeout);
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
-        this.timeout = timeout;
+        setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
         String internalTopic = "nodes/" + eui + "/packets";
         mediator.tell(new DistributedPubSubMediator.Subscribe(internalTopic, self()), self());
@@ -73,6 +74,13 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                         (message, data) ->
                         {
                             context().parent().tell(String.format("Sensor going from %s to %s", stateName(), DeviceState.OK), self());
+
+                            Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
+                                .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
+                                .header("Content-Type", "application/json")
+                                .header("accept", "application/json")
+                                .body(new JsonNode("{fields: {status: " + DeviceState.OK + "}}"))
+                                .asJson().getStatus();
 
                             if (stateData().getAppEui().equals("+")) {
                                 stateData().setLastObservation(convertToObservation(message));
@@ -105,16 +113,23 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                         })
         );
 
-        when(DeviceState.OK, timeout,
+        when(DeviceState.OK, null, // timeout duration is set in the constructor
                 matchEventEquals(StateTimeout(),
                         (event, data) -> {
+                            Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
+                                .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
+                                .header("Content-Type", "application/json")
+                                .header("accept", "application/json")
+                                .body(new JsonNode("{fields: {status: " + DeviceState.UNKNOWN + "}}"))
+                                .asJson();
+
                             SlackApi api = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
-                            api.call(new SlackMessage("Timeout! Sensor "+data.getEui()+" in "+data.getCity() + " has been inactive for "+timeout));
+                            api.call(new SlackMessage("Timeout! Sensor "+data.getEui()+" in "+data.getCity() + " has been inactive for "+stateData().getTimeout()));
 
                             mediator.tell(new DistributedPubSubMediator.Publish("timeouts", "I timed out! I was last seen: "+
                                     stateData().getLastSeen()), self());
                             context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                    new Messages.MqttPublishMessage("dataport/site/"+stateData().getCity()+"/sensor/"+
+                                    new MqttPublishMessage("dataport/site/"+stateData().getCity()+"/sensor/"+
                                             stateData().getEui()+"/events/status",
                                             new MqttMessage(gson.toJson(stateData().withState(DeviceState.UNKNOWN)).getBytes())), self());
                             return goTo(DeviceState.UNKNOWN);
@@ -150,12 +165,10 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
     }
 
     private StagingObservation convertToStagingObservation(MqttMessage message) {
-        System.out.println(new String(message.getPayload()));
         return gson.fromJson(new String(message.getPayload()), StagingObservation.class);
     }
 
     private Observation convertToObservation(MqttMessage message) {
-        System.out.println(new String(message.getPayload()));
         return gson.fromJson(new String(message.getPayload()), Observation.class);
     }
 
