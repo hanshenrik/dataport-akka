@@ -8,10 +8,13 @@ import akka.japi.pf.DeciderBuilder;
 import akka.pattern.Backoff;
 import akka.pattern.BackoffOptions;
 import akka.pattern.BackoffSupervisor;
+import no.ntnu.dataport.types.Messages;
 import no.ntnu.dataport.utils.SecretStuff;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import scala.concurrent.duration.Duration;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static akka.actor.SupervisorStrategy.*;
@@ -19,6 +22,7 @@ import static akka.actor.SupervisorStrategy.*;
 
 public class ExternalResourceSupervisorActor extends UntypedActor {
     LoggingAdapter log = Logging.getLogger(getContext().system(), this);
+    private List<ActorRef> monitoredApplications;
 
     public static Props props() {
         return Props.create(new Creator<ExternalResourceSupervisorActor>() {
@@ -32,11 +36,13 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
     }
 
     public ExternalResourceSupervisorActor() {
-        // TODO: have as list/map instead, not variables
+        this.monitoredApplications = new ArrayList<>();
+
+        // Connect to gateway status broker
+        Props ttnGatewayStatusBrokerProps = MqttActor.props("tcp://croft.thethings.girovito.nl:1883", 0, null, null);
+
+        // Connect to our broker to publish message to the website, dataport.item.ntnu.no
         Props dataportBrokerProps = MqttActor.props("tcp://dataport.item.ntnu.no:1883", 0, null, null);
-        Props ttnCroftBrokerProps = MqttActor.props("tcp://croft.thethings.girovito.nl:1883", 0, null, null);
-        Props ttnStagingBrokerProps = MqttActor.props("tcp://staging.thethingsnetwork.org:1883", 0, SecretStuff.VEJLE_APP_EUI,
-                SecretStuff.VEJLE_APP_KEY);
 
         BackoffOptions dataportBrokerBackoffOptions= Backoff.onFailure(
                 dataportBrokerProps,
@@ -46,34 +52,47 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
                 0.2 // add 20% "noise" to vary the intervals slightly
             ).withSupervisorStrategy(mqttActorStrategy);
 
-        BackoffOptions ttnCroftBrokerBackoffOptions = Backoff.onFailure(
-                ttnCroftBrokerProps,
-                "ttnCroftBroker",
-                Duration.create(3, TimeUnit.SECONDS),
-                Duration.create(2, TimeUnit.MINUTES),
-                0.2 // add 20% "noise" to vary the intervals slightly
-        ).withSupervisorStrategy(mqttActorStrategy);
-
-        BackoffOptions ttnStagingBrokerBackoffOptions = Backoff.onFailure(
-                ttnStagingBrokerProps,
-                "ttnStagingBroker",
+        BackoffOptions ttnGatewayStatusBrokerBackoffOptions = Backoff.onFailure(
+                ttnGatewayStatusBrokerProps,
+                "ttnGatewayStatusBroker",
                 Duration.create(3, TimeUnit.SECONDS),
                 Duration.create(2, TimeUnit.MINUTES),
                 0.2 // add 20% "noise" to vary the intervals slightly
         ).withSupervisorStrategy(mqttActorStrategy);
 
         final Props dataportBrokerSupervisorProps = BackoffSupervisor.props(dataportBrokerBackoffOptions);
-        final Props ttnCroftBrokerSupervisorProps = BackoffSupervisor.props(ttnCroftBrokerBackoffOptions);
-        final Props ttnStagingBrokerSupervisorProps = BackoffSupervisor.props(ttnStagingBrokerBackoffOptions);
+        final Props ttnGatewayStatusBrokerSupervisorProps = BackoffSupervisor.props(ttnGatewayStatusBrokerBackoffOptions);
 
         getContext().actorOf(dataportBrokerSupervisorProps, "dataportBrokerSupervisor");
-        getContext().actorOf(ttnCroftBrokerSupervisorProps, "ttnCroftBrokerSupervisor");
-        getContext().actorOf(ttnStagingBrokerSupervisorProps, "ttnStagingBrokerSupervisor");
+        getContext().actorOf(ttnGatewayStatusBrokerSupervisorProps, "ttnGatewayStatusBrokerSupervisor");
     }
 
     @Override
     public void onReceive(Object message) throws Throwable {
         log.info("Received {} from {}", message, getSender());
+        if (message instanceof Messages.MonitorApplicationMessage) {
+            String actorName = "ttn-" + ((Messages.MonitorApplicationMessage) message).name + "-broker";
+            Props applicationBrokerProps = MqttActor.props("tcp://staging.thethingsnetwork.org:1883", 0,
+                    ((Messages.MonitorApplicationMessage) message).appEui,
+                    ((Messages.MonitorApplicationMessage) message).appKey);
+
+            BackoffOptions applicationBrokerBackoffOptions = Backoff.onFailure(
+                    applicationBrokerProps,
+                    actorName,
+                    Duration.create(3, TimeUnit.SECONDS),
+                    Duration.create(2, TimeUnit.MINUTES),
+                    0.2 // add 20% "noise" to vary the intervals slightly
+            ).withSupervisorStrategy(mqttActorStrategy);
+
+            final Props supervisorProps = BackoffSupervisor.props(applicationBrokerBackoffOptions);
+
+            ActorRef app = getContext().actorOf(supervisorProps, actorName + "-supervisor");
+
+            monitoredApplications.add(app);
+        }
+        else {
+            unhandled(message);
+        }
     }
 
     private OneForOneStrategy mqttActorStrategy =

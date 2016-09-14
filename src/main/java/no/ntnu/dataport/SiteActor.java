@@ -89,7 +89,7 @@ public class SiteActor extends UntypedActor {
                         networkComponents.add(new NetworkComponent(DeviceType.GATEWAY, eui, pos, status));
 
                         // Tell the MqttActor to listen to status messages from this gateway
-                        context().system().actorSelection("/user/externalResourceSupervisor/ttnCroftBrokerSupervisor/ttnCroftBroker").tell(
+                        context().system().actorSelection("/user/externalResourceSupervisor/ttnGatewayStatusBrokerSupervisor/ttnGatewayStatusBroker").tell(
                                 new MqttSubscribeMessage("gateways/" + eui + "/status"), self());
                         break;
                     case "sensor":
@@ -98,10 +98,7 @@ public class SiteActor extends UntypedActor {
                         networkComponents.add(new NetworkComponent(DeviceType.SENSOR, eui, pos, status));
 
                         // Tell the MqttActor to listen to events from this sensor
-                        // TODO: This is for legacy purposes. When the Trondheim application is setup properly, drop this topic structure!
-                        context().system().actorSelection("/user/externalResourceSupervisor/ttnCroftBrokerSupervisor/ttnCroftBroker").tell(
-                                new MqttSubscribeMessage("nodes/" + eui + "/packets"), self());
-                        context().system().actorSelection("/user/externalResourceSupervisor/ttnStagingBrokerSupervisor/ttnStagingBroker").tell(
+                        context().system().actorSelection("/user/externalResourceSupervisor/ttn-"+name+"-broker-supervisor/ttn-"+name+"-broker").tell(
                                 new MqttSubscribeMessage(appEui + "/devices/" + eui + "/up"), self());
                         break;
                     default:

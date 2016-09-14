@@ -35,6 +35,20 @@ public class Messages {
         }
     }
 
+    public static final class MonitorApplicationMessage {
+        public final String name;
+        public final String appEui;
+        public final String appKey;
+        public final Position position;
+
+        public MonitorApplicationMessage(String name, String appEui, String appKey, Position position) {
+            this.name = name;
+            this.appEui = appEui;
+            this.appKey = appKey;
+            this.position = position;
+        }
+    }
+
     public static final class Observation {
         public final String nodeEui;
         public final String gatewayEui;
