@@ -43,19 +43,27 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
 
     GatewayData initialData;
     ActorRef mediator;
+    String internalStatusPublishTopic;
     Gson gson;
 
-    public GatewayActor(final String eui, final String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
+    public GatewayActor(final String eui, final String airtableID, String appEui, String city, Position position,
+                        FiniteDuration timeout) {
         this.initialData = new GatewayData(eui, airtableID, appEui, city, position, timeout);
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
+        this.internalStatusPublishTopic = "dataport/site/" + city + "/gateway/" + eui + "/events/status";
         setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
-        String internalTopic = "gateways/" + eui + "/status";
-        mediator.tell(new DistributedPubSubMediator.Subscribe(internalTopic, self()), self());
+        String receiveTopic = "external/gateways/" + eui + "/status";
+        mediator.tell(new DistributedPubSubMediator.Subscribe(receiveTopic, self()), self());
     }
 
     public void handler(DeviceState from, DeviceState to) {
+        if (from != to) {
+            // TODO: instead of doing mediator.tell in all state changes, do it here with a StateChangeMessage or something
+            System.out.println("states do not match: publish state");
+//            mediator.tell();
+        }
     }
 
     {
@@ -66,6 +74,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                         (event, data) -> {
                             context().parent().tell(String.format("Gateway now subscribing, going from state %s to %s",
                                     DeviceState.UNINITIALIZED, DeviceState.UNKNOWN), self());
+
                             return goTo(DeviceState.UNKNOWN).using(initialData);
                         })
         );
@@ -81,11 +90,14 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                                 .body(new JsonNode("{fields: {status: " + DeviceState.OK + "}}"))
                                 .asJson();
 
-                            context().parent().tell(String.format("Gateway going from %s to %s", stateName(), DeviceState.OK), self());
-                            context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                    new Messages.MqttPublishMessage("dataport/site/"+stateData().getCity()+"/gateway/"+
-                                            stateData().getEui()+"/events/status",
-                                            new MqttMessage(gson.toJson(stateData().withState(DeviceState.OK).withLastSeen(DateTime.now())).getBytes())), self());
+                            // Tell all interested that I am chaning my state
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
+                                    new Messages.MqttPublishMessage(internalStatusPublishTopic,
+                                        new MqttMessage(gson.toJson(stateData()
+                                                .withState(DeviceState.OK)
+                                                .withLastSeen(DateTime.now())).getBytes()))),
+                                    self());
+
                             return goTo(DeviceState.OK).using(stateData().withLastSeen(DateTime.now()));
                             // TODO: don't use .now(), make JSON message into object before sending internally, add getTimestamp or something
                         }
@@ -94,12 +106,14 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                             log().info("New observation received at gateway!");
                             double distance = (int) Haversine.distance(message, stateData().getPosition());
                             log().info("Distance calculated to be: {}", distance);
-                            context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                    new Messages.MqttPublishMessage("dataport/site/"+stateData().getCity()+"/gateway/"+
-                                            stateData().getEui()+"/events/status",
-                                            new MqttMessage(gson.toJson(stateData()
-                                                    .withMaxObservedRange(distance)
-                                                    .withLastSeen(DateTime.now())).getBytes())), self());
+
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
+                                new Messages.MqttPublishMessage(internalStatusPublishTopic,
+                                    new MqttMessage(gson.toJson(stateData()
+                                            .withMaxObservedRange(distance)
+                                            .withLastSeen(DateTime.now())).getBytes()))),
+                                    self());
+
                             return stay();
                         })
         );
@@ -107,7 +121,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
         when(DeviceState.OK, null, // timeout duration is set in the constructor
                 matchEventEquals(StateTimeout(),
                         (event, data) -> {
-                            mediator.tell(new DistributedPubSubMediator.Publish("timeouts", "I timed out! I was last seen: "+
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, "I timed out! I was last seen: "+
                                     stateData().getLastSeen()), self());
 
                             Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
@@ -120,30 +134,35 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                             SlackApi api = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
                             api.call(new SlackMessage("Timeout! Gateway "+data.getEui()+" in "+data.getCity() + " has been inactive for "+stateData().getTimeout()));
 
-                            context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                    new Messages.MqttPublishMessage("dataport/site/"+stateData().getCity()+"/gateway/"+
-                                            stateData().getEui()+"/events/status",
-                                            new MqttMessage(gson.toJson(stateData().withState(DeviceState.UNKNOWN)).getBytes())), self());
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
+                                new Messages.MqttPublishMessage(internalStatusPublishTopic,
+                                    new MqttMessage(gson.toJson(stateData()
+                                            .withState(DeviceState.UNKNOWN)).getBytes()))),
+                                    self());
+
                             return goTo(DeviceState.UNKNOWN);
                         }).event(MqttMessage.class,
                         (message, data) -> {
                             context().parent().tell("Got data in expected time, staying OK", self());
-                            context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                    new Messages.MqttPublishMessage("dataport/site/"+stateData().getCity()+"/gateway/"+
-                                            stateData().getEui()+"/events/status",
-                                            new MqttMessage(gson.toJson(stateData().withLastSeen(DateTime.now())).getBytes())), self());
+
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
+                                new Messages.MqttPublishMessage(internalStatusPublishTopic,
+                                    new MqttMessage(gson.toJson(stateData().withLastSeen(DateTime.now())).getBytes()))), self());
+
                             return stay().using(stateData().withLastSeen(DateTime.now()));
                         }).event(Position.class,
                         (message, data) -> {
                             log().info("New observation from position {} sent to gateway!", message);
                             double distance = (int) Haversine.distance(message, stateData().getPosition());
                             log().info("Distance calculated to be: {}", distance);
-                            context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                    new Messages.MqttPublishMessage("dataport/site/"+stateData().getCity()+"/gateway/"+
-                                            stateData().getEui()+"/events/status",
-                                            new MqttMessage(gson.toJson(stateData()
-                                                    .withMaxObservedRange(distance)
-                                                    .withLastSeen(DateTime.now())).getBytes())), self());
+
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
+                                new Messages.MqttPublishMessage(internalStatusPublishTopic,
+                                    new MqttMessage(gson.toJson(stateData()
+                                            .withMaxObservedRange(distance)
+                                            .withLastSeen(DateTime.now())).getBytes()))),
+                                    self());
+
                             return stay();
                         }));
 

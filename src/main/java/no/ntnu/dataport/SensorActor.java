@@ -51,7 +51,7 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
         setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
-        String internalTopic = appEui + "/devices/" + eui + "/up";
+        String internalTopic = "external/" + appEui + "/devices/" + eui + "/up";
         mediator.tell(new DistributedPubSubMediator.Subscribe(internalTopic, self()), self());
     }
 

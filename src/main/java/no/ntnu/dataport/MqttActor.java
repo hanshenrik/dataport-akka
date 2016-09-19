@@ -102,7 +102,6 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
 //            log.info("### ACK for subscribing");
         }
         else if (message instanceof MqttPublishMessage) {
-//            log.info("###: "+((MqttPublishMessage) message).mqttMessage);
             getMqttClient().publish(((MqttPublishMessage) message).topic, ((MqttPublishMessage) message).mqttMessage);
         }
         else if (message instanceof NetworkGraphMessage) {
@@ -177,14 +176,9 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
 
     @Override
     public void messageArrived(String topic, MqttMessage message) {
-        log.info("MQTT Received on topic {} message: '{}'", topic, message);
-        // TODO: Maybe do some filtering with the input?
-        mediator.tell(new DistributedPubSubMediator.Publish(topic, message), getSelf());
-        // OBS! Do not publish to same MQTT broker on same topic, as this will cause a loop!
-        // Better to tell another actor a mqttMessage was received, and let this actor publish to any relevant
-        // MQTT topics it might be connected to?
-//        getMqttClient().publish(topic, new MqttMessage(content.getBytes()));
-//        log.info("Published to topic: {}", topic);
+        String internalTopic = "external/" + topic;
+        log.info("MQTT Received on topic {} message: {}. Publishing on internal topic {}", topic, message, internalTopic);
+        mediator.tell(new DistributedPubSubMediator.Publish(internalTopic, message), getSelf());
     }
 
     @Override
