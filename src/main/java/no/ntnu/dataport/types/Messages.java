@@ -28,10 +28,17 @@ public class Messages {
     }
     public static final class NetworkGraphMessage {
         public final String graph;
-        public final String city;
-        public NetworkGraphMessage(String graph, String city) {
+        public final String topic;
+        public NetworkGraphMessage(String graph, String topic) {
             this.graph = graph;
-            this.city = city;
+            this.topic = topic;
+        }
+    }
+
+    public static final class SubscribeToInternalTopicMessage {
+        public final String topic;
+        public SubscribeToInternalTopicMessage(String topic) {
+            this.topic = topic;
         }
     }
 

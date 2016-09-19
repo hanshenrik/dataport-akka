@@ -1,7 +1,11 @@
 package no.ntnu.dataport;
 
+import akka.actor.ActorRef;
+import akka.actor.Cancellable;
 import akka.actor.Props;
 import akka.actor.UntypedActor;
+import akka.cluster.pubsub.DistributedPubSub;
+import akka.cluster.pubsub.DistributedPubSubMediator;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
@@ -10,11 +14,8 @@ import com.mashape.unirest.http.HttpResponse;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import com.mashape.unirest.http.exceptions.UnirestException;
-import no.ntnu.dataport.types.DeviceState;
-import no.ntnu.dataport.types.DeviceType;
+import no.ntnu.dataport.types.*;
 import no.ntnu.dataport.types.Messages.*;
-import no.ntnu.dataport.types.NetworkComponent;
-import no.ntnu.dataport.types.Position;
 import no.ntnu.dataport.utils.SecretStuff;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -48,16 +49,44 @@ public class SiteActor extends UntypedActor {
         });
     }
 
+    ActorRef mediator;
     final String name;
     final String appEui;
     final Position position;
     List<NetworkComponent> networkComponents = new ArrayList<>();
+    final String networkGraphTopic;
+
+    private final Cancellable periodicNetworkGraphMessage;
+
+    @Override
+    public void postStop() {
+        periodicNetworkGraphMessage.cancel();
+    }
 
     public SiteActor(String name, String appEui, Position position) {
         log.info("Constructor called with name: {}, lat: {}, lon: {}", name, position.lat, position.lon);
         this.name = name;
+        this.networkGraphTopic = "dataport/site/" + name + "/graph";
         this.appEui = appEui;
         this.position = position;
+        this.mediator = DistributedPubSub.get(context().system()).mediator();
+
+        // Tell Dataport MQTTActor to listen to some internal topics
+        getContext().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
+                new Messages.SubscribeToInternalTopicMessage(networkGraphTopic), self()
+        );
+
+        this.periodicNetworkGraphMessage = getContext().system().scheduler().schedule(
+                Duration.create(5, TimeUnit.SECONDS),
+                Duration.create(30, TimeUnit.SECONDS),
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        mediator.tell(new DistributedPubSubMediator.Publish(networkGraphTopic, getNetworkGraphMessage()), self());
+                    }
+                },
+                getContext().dispatcher());
+
         try {
             HttpResponse<JsonNode> jsonResponse = Unirest.get("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + name)
                 .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
@@ -109,16 +138,14 @@ public class SiteActor extends UntypedActor {
         catch (UnirestException e) {
             e.printStackTrace();
         }
-
-        // TODO: do this on a regular basis. Will that send the graph message (retained) to all connected clients?
-        String graph = getNetworkGraph();
-        NetworkGraphMessage networkGraphMessage = new NetworkGraphMessage(graph, this.name);
-        context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker")
-                .tell(networkGraphMessage, self());
     }
 
-    public String getNetworkGraph() {
+    private String getNetworkGraph() {
         return new Gson().toJson(networkComponents);
+    }
+
+    private NetworkGraphMessage getNetworkGraphMessage() {
+        return new NetworkGraphMessage(getNetworkGraph(), networkGraphTopic);
     }
 
     @Override

@@ -3,6 +3,7 @@ package no.ntnu.dataport;
 import akka.actor.*;
 import akka.cluster.pubsub.DistributedPubSub;
 import akka.cluster.pubsub.DistributedPubSubMediator;
+import akka.cluster.pubsub.DistributedPubSubMessage;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
@@ -94,12 +95,18 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
         else if (message instanceof MqttException && getSender() == getSelf()) {
             throw (MqttException) message;
         }
+        else if (message instanceof SubscribeToInternalTopicMessage) {
+            mediator.tell(new DistributedPubSubMediator.Subscribe(((SubscribeToInternalTopicMessage) message).topic, self()), self());
+        }
+        else if (message instanceof DistributedPubSubMediator.SubscribeAck) {
+//            log.info("### ACK for subscribing");
+        }
         else if (message instanceof MqttPublishMessage) {
 //            log.info("###: "+((MqttPublishMessage) message).mqttMessage);
             getMqttClient().publish(((MqttPublishMessage) message).topic, ((MqttPublishMessage) message).mqttMessage);
         }
         else if (message instanceof NetworkGraphMessage) {
-            String topic = "dataport/site/" + ((NetworkGraphMessage) message).city + "/graph";
+            String topic = ((NetworkGraphMessage) message).topic;
             MqttMessage mqttMessage = new MqttMessage(((NetworkGraphMessage) message).graph.getBytes());
 
             mqttMessage.setRetained(true);
