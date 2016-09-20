@@ -44,15 +44,30 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
     SensorData initialData;
     ActorRef mediator;
     Gson gson;
+    String externalReceiveTopic;
+    String internalStatusPublishTopic;
+    String internalReceptionPublishTopic;
 
     public SensorActor(final String eui, final String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
         this.initialData = new SensorData(eui, airtableID, appEui, city, position, timeout);
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
+        this.externalReceiveTopic = "external/" + appEui + "/devices/" + eui + "/up";
+        this.internalStatusPublishTopic = "dataport/site/" + city + "/sensor/" + eui + "/events/status";
+        this.internalReceptionPublishTopic = "dataport/site/" + city + "/sensor/" + eui + "/events/reception";
+
         setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
-        String internalTopic = "external/" + appEui + "/devices/" + eui + "/up";
-        mediator.tell(new DistributedPubSubMediator.Subscribe(internalTopic, self()), self());
+        // Tell the mediator I am interested in all MQTT messages sent from my digital twin
+        mediator.tell(new DistributedPubSubMediator.Subscribe(externalReceiveTopic, self()), self());
+    }
+
+    public void handler(DeviceState from, DeviceState to) {
+        if (from != to) {
+            // TODO: instead of doing mediator.tell in all state changes, do it here with a StateChangeMessage or something
+            log().info("Going from {} to {}", from, to);
+//            mediator.tell();
+        }
     }
 
     {
@@ -71,8 +86,7 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                 matchEvent(MqttMessage.class,
                         (message, data) ->
                         {
-                            context().parent().tell(String.format("Sensor going from %s to %s", stateName(), DeviceState.OK), self());
-
+                            // Update the Airtable
                             Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
                                 .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
                                 .header("Content-Type", "application/json")
@@ -91,16 +105,20 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                             stateData().setBatteryLevel(-1);
                             stateData().setCo2(-1);
 
+                            // Tell the gateway where I am so it can calculate maxObservedRange
                             context().system().actorSelection("/user/"+stateData().getCity()+"/"+stateData().getLastObservation().gatewayEui)
                                     .tell(stateData().getPosition(), self());
-                            context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                    new MqttPublishMessage("dataport/site/"+stateData().getCity()+"/sensor/"+
-                                            stateData().getEui()+"/events/status",
-                                            new MqttMessage(gson.toJson(stateData().withState(DeviceState.OK)).getBytes())), self());
-                            context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                    new MqttPublishMessage("dataport/site/"+stateData().getCity()+"/sensor/"+
-                                            stateData().getEui()+"/events/reception",
-                                            new MqttMessage(gson.toJson(stateData().getLastObservation()).getBytes())), self());
+
+                            // Tell all interested that I am changing my state
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
+                                new MqttPublishMessage(internalStatusPublishTopic,
+                                    new MqttMessage(gson.toJson(stateData().withState(DeviceState.OK)).getBytes()))), self());
+
+                            // Publish my reception to all interested
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalReceptionPublishTopic,
+                                new MqttPublishMessage(internalReceptionPublishTopic,
+                                    new MqttMessage(gson.toJson(stateData().getLastObservation()).getBytes()))), self());
+
                             return goTo(DeviceState.OK).using(stateData().withLastSeen(DateTime.now()));
                             // TODO: don't use .now(), make JSON message into object before sending internally, add getTimestamp or something
                         }
@@ -124,17 +142,14 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                             SlackApi api = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
                             api.call(new SlackMessage("Timeout! Sensor "+data.getEui()+" in "+data.getCity() + " has been inactive for "+stateData().getTimeout()));
 
-                            mediator.tell(new DistributedPubSubMediator.Publish("timeouts", "I timed out! I was last seen: "+
-                                    stateData().getLastSeen()), self());
-                            context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                    new MqttPublishMessage("dataport/site/"+stateData().getCity()+"/sensor/"+
-                                            stateData().getEui()+"/events/status",
-                                            new MqttMessage(gson.toJson(stateData().withState(DeviceState.UNKNOWN)).getBytes())), self());
-                            return goTo(DeviceState.UNKNOWN);
+                            // Tell all interested that I am changing my state
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
+                                new MqttPublishMessage(internalStatusPublishTopic,
+                                    new MqttMessage(gson.toJson(stateData().withState(DeviceState.UNKNOWN)).getBytes()))), self());
+
+                            return goTo(DeviceState.UNKNOWN).using(stateData().withState(DeviceState.UNKNOWN));
                         }).event(MqttMessage.class,
                         (message, data) -> {
-                            context().parent().tell("Got data in expected time, staying OK", self());
-
                             if (stateData().getAppEui().equals("+")) {
                                 stateData().setLastObservation(convertToObservation(message));
                             }
@@ -146,18 +161,24 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                             stateData().setBatteryLevel(-1);
                             stateData().setCo2(-1);
 
+                            // Tell the gateway where I am so it can calculate maxObservedRange
                             context().system().actorSelection("/user/"+stateData().getCity()+"/"+stateData().getLastObservation().gatewayEui)
                                     .tell(stateData().getPosition(), self());
-                            context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                    new Messages.MqttPublishMessage("dataport/site/"+stateData().getCity()+"/sensor/"+
-                                            stateData().getEui()+"/events/status",
-                                            new MqttMessage(gson.toJson(stateData()).getBytes())), self());
-                            context().system().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                    new Messages.MqttPublishMessage("dataport/site/"+stateData().getCity()+"/sensor/"+
-                                            stateData().getEui()+"/events/reception",
-                                            new MqttMessage(gson.toJson(stateData().getLastObservation()).getBytes())), self());
+
+                            // Tell all interested that I am changing my state
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
+                                    new MqttPublishMessage(internalStatusPublishTopic,
+                                            new MqttMessage(gson.toJson(stateData()).getBytes()))), self());
+
+                            // Publish my reception to all interested
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalReceptionPublishTopic,
+                                    new MqttPublishMessage(internalReceptionPublishTopic,
+                                            new MqttMessage(gson.toJson(stateData().getLastObservation()).getBytes()))), self());
+
                             return stay().using(stateData().withLastSeen(DateTime.now()));
                         }));
+
+        onTransition(this::handler);
 
         initialize();
     }

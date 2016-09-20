@@ -44,6 +44,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
     GatewayData initialData;
     ActorRef mediator;
     String internalStatusPublishTopic;
+    String receiveStatusTopic;
     Gson gson;
 
     public GatewayActor(final String eui, final String airtableID, String appEui, String city, Position position,
@@ -52,16 +53,16 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
         this.internalStatusPublishTopic = "dataport/site/" + city + "/gateway/" + eui + "/events/status";
+        this.receiveStatusTopic = "external/gateways/" + eui + "/status";
         setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
-        String receiveTopic = "external/gateways/" + eui + "/status";
-        mediator.tell(new DistributedPubSubMediator.Subscribe(receiveTopic, self()), self());
+        mediator.tell(new DistributedPubSubMediator.Subscribe(receiveStatusTopic, self()), self());
     }
 
     public void handler(DeviceState from, DeviceState to) {
         if (from != to) {
             // TODO: instead of doing mediator.tell in all state changes, do it here with a StateChangeMessage or something
-            System.out.println("states do not match: publish state");
+            log().info("Going from {} to {}", from, to);
 //            mediator.tell();
         }
     }
@@ -90,7 +91,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                                 .body(new JsonNode("{fields: {status: " + DeviceState.OK + "}}"))
                                 .asJson();
 
-                            // Tell all interested that I am chaning my state
+                            // Tell all interested that I am changing my state
                             mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
                                     new Messages.MqttPublishMessage(internalStatusPublishTopic,
                                         new MqttMessage(gson.toJson(stateData()
