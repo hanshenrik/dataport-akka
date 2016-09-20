@@ -102,14 +102,22 @@ public class SiteActor extends UntypedActor {
                 JSONObject fields = ((JSONObject) device).getJSONObject("fields");
                 eui = fields.getString("eui");
                 type = fields.getString("type");
-                pos = new Position(fields.getDouble("latitude"), fields.getDouble("longitude"));
                 timeout = Duration.create(fields.getInt("timeout"), TimeUnit.SECONDS);
+
+                try {
+                    pos = new Position(fields.getDouble("latitude"), fields.getDouble("longitude"));
+                } catch (JSONException e) {
+                    log.error("Device {} didn't have position in Aritable, it will not be created!", eui);
+                    continue;
+                }
+
                 try {
                     status = DeviceState.valueOf(fields.getString("status"));
                 } catch (JSONException e) {
                     status = DeviceState.UNKNOWN;
                     log.info("Device {} didn't have status in Airtable, setting status to {}", eui, status);
                 }
+
                 switch (type.toLowerCase()) {
                     case "gateway":
                         // Create gateway actor
