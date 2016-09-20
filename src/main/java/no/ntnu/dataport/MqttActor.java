@@ -48,11 +48,11 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
 
     @Override
     public void preStart() {
-        log.info("Yo!");
+
     }
 
     public MqttActor(String broker, int qos, String username, String password) throws MqttException {
-        log.info("Constructor called with broker: {}, username: {}, password: {}", broker, username, password);
+        log.debug("Constructor called with broker: {}, username: {}, password: {}", broker, username, password);
         this.broker     = broker;
         this.qos        = qos;
         this.username   = username;
@@ -74,7 +74,7 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
             connectionOptions.setAutomaticReconnect(true);
         }
         if (username != null && password != null) {
-            log.info("Username and password provided. Add them to connectionOptions");
+            log.debug("Username and password provided. Add them to connectionOptions");
             connectionOptions.setUserName(username);
             connectionOptions.setPassword(password.toCharArray());
         }
@@ -84,13 +84,13 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
 
     @Override
     public void onReceive(Object message) throws Exception {
-        log.info("Got: {} from {}", message, getSender());
+        log.debug("Got: {} from {}", message, getSender());
         if (message instanceof MqttConnectionStatusMessage) {
             getSender().tell(getState(), getSelf());
         }
         else if (message instanceof MqttSubscribeMessage) {
             getMqttClient().subscribe(((MqttSubscribeMessage) message).topic);
-//            log.info("Now subscribing to topic {}", ((MqttSubscribeMessage) message).topic);
+            log.debug("Now subscribing to topic {}", ((MqttSubscribeMessage) message).topic);
         }
         else if (message instanceof MqttException && getSender() == getSelf()) {
             throw (MqttException) message;
@@ -99,7 +99,7 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
             mediator.tell(new DistributedPubSubMediator.Subscribe(((SubscribeToInternalTopicMessage) message).topic, self()), self());
         }
         else if (message instanceof DistributedPubSubMediator.SubscribeAck) {
-//            log.info("### ACK for subscribing");
+            log.debug("### ACK for subscribing");
         }
         else if (message instanceof MqttPublishMessage) {
             getMqttClient().publish(((MqttPublishMessage) message).topic, ((MqttPublishMessage) message).mqttMessage);
@@ -177,7 +177,7 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
     @Override
     public void messageArrived(String topic, MqttMessage message) {
         String internalTopic = "external/" + topic;
-        log.info("MQTT Received on topic {} message: {}. Publishing on internal topic {}", topic, message, internalTopic);
+        log.debug("MQTT Received on topic {} message: {}. Publishing on internal topic {}", topic, message, internalTopic);
         mediator.tell(new DistributedPubSubMediator.Publish(internalTopic, message), getSelf());
     }
 

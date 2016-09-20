@@ -69,7 +69,7 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
 
     @Override
     public void onReceive(Object message) throws Throwable {
-        log.info("Received {} from {}", message, getSender());
+        log.debug("Received {} from {}", message, getSender());
         if (message instanceof Messages.MonitorApplicationMessage) {
             String actorName = "ttn-" + ((Messages.MonitorApplicationMessage) message).name + "-broker";
             Props applicationBrokerProps = MqttActor.props("tcp://staging.thethingsnetwork.org:1883", 0,

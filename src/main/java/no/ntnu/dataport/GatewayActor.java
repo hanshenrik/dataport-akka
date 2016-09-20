@@ -73,9 +73,6 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
         when(DeviceState.UNINITIALIZED,
                 matchEvent(DistributedPubSubMediator.SubscribeAck.class,
                         (event, data) -> {
-                            context().parent().tell(String.format("Gateway now subscribing, going from state %s to %s",
-                                    DeviceState.UNINITIALIZED, DeviceState.UNKNOWN), self());
-
                             return goTo(DeviceState.UNKNOWN).using(initialData);
                         })
         );
@@ -104,9 +101,9 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                         }
                 ).event(Position.class,
                         (message, data) -> {
-                            log().info("New observation received at gateway!");
+                            log().debug("New observation received at gateway!");
                             double distance = (int) Haversine.distance(message, stateData().getPosition());
-                            log().info("Distance calculated to be: {}", distance);
+                            log().debug("Distance calculated to be: {}", distance);
 
                             mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
                                 new Messages.MqttPublishMessage(internalStatusPublishTopic,
@@ -122,9 +119,6 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
         when(DeviceState.OK, null, // timeout duration is set in the constructor
                 matchEventEquals(StateTimeout(),
                         (event, data) -> {
-                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, "I timed out! I was last seen: "+
-                                    stateData().getLastSeen()), self());
-
                             Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
                                 .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
                                 .header("Content-Type", "application/json")
@@ -144,7 +138,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                             return goTo(DeviceState.UNKNOWN);
                         }).event(MqttMessage.class,
                         (message, data) -> {
-                            context().parent().tell("Got data in expected time, staying OK", self());
+                            log().debug("Got data in expected time, staying in OK state");
 
                             mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
                                 new Messages.MqttPublishMessage(internalStatusPublishTopic,
@@ -153,9 +147,9 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                             return stay().using(stateData().withLastSeen(DateTime.now()));
                         }).event(Position.class,
                         (message, data) -> {
-                            log().info("New observation from position {} sent to gateway!", message);
+                            log().debug("New observation from position {} sent to gateway!", message);
                             double distance = (int) Haversine.distance(message, stateData().getPosition());
-                            log().info("Distance calculated to be: {}", distance);
+                            log().debug("Distance calculated to be: {}", distance);
 
                             mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
                                 new Messages.MqttPublishMessage(internalStatusPublishTopic,

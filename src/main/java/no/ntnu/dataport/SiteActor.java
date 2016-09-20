@@ -24,7 +24,9 @@ import scala.concurrent.duration.Duration;
 import scala.concurrent.duration.FiniteDuration;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class SiteActor extends UntypedActor {
@@ -54,6 +56,7 @@ public class SiteActor extends UntypedActor {
     final String appEui;
     final Position position;
     List<NetworkComponent> networkComponents = new ArrayList<>();
+    Map<String, NetworkComponent> networkComponentMap = new HashMap<>();
     final String networkGraphTopic;
 
     private final Cancellable periodicNetworkGraphMessage;
@@ -64,7 +67,7 @@ public class SiteActor extends UntypedActor {
     }
 
     public SiteActor(String name, String appEui, Position position) {
-        log.info("Constructor called with name: {}, lat: {}, lon: {}", name, position.lat, position.lon);
+        log.debug("Constructor called with name: {}, lat: {}, lon: {}", name, position.lat, position.lon);
         this.name = name;
         this.networkGraphTopic = "dataport/site/" + name + "/graph";
         this.appEui = appEui;
@@ -107,7 +110,7 @@ public class SiteActor extends UntypedActor {
                 try {
                     pos = new Position(fields.getDouble("latitude"), fields.getDouble("longitude"));
                 } catch (JSONException e) {
-                    log.error("Device {} didn't have position in Aritable, it will not be created!", eui);
+                    log.warning("Device {} didn't have position in Aritable, it will not be created!", eui);
                     continue;
                 }
 
@@ -115,7 +118,7 @@ public class SiteActor extends UntypedActor {
                     status = DeviceState.valueOf(fields.getString("status"));
                 } catch (JSONException e) {
                     status = DeviceState.UNKNOWN;
-                    log.info("Device {} didn't have status in Airtable, setting status to {}", eui, status);
+                    log.warning("Device {} didn't have status in Airtable, setting status to {}", eui, status);
                 }
 
                 switch (type.toLowerCase()) {
@@ -128,6 +131,10 @@ public class SiteActor extends UntypedActor {
 
                         // Know that it exists, so we can keep an updated network graph
                         networkComponents.add(new NetworkComponent(DeviceType.GATEWAY, eui, pos, status));
+                        networkComponentMap.put(eui, new NetworkComponent(DeviceType.GATEWAY, eui, pos, status));
+
+                        // Subscribe to status updates from the gateway
+                        mediator.tell(new DistributedPubSubMediator.Subscribe(internalGatewayStatusTopic, self()), self());
 
                         // Tell the GatewayStatusBroker to listen to status messages from this gateway
                         context().system().actorSelection("/user/externalResourceSupervisor/ttnGatewayStatusBrokerSupervisor/ttnGatewayStatusBroker").tell(
@@ -147,6 +154,10 @@ public class SiteActor extends UntypedActor {
 
                         // Know that it exists, so we can keep an updated network graph
                         networkComponents.add(new NetworkComponent(DeviceType.SENSOR, eui, pos, status));
+                        networkComponentMap.put(eui, new NetworkComponent(DeviceType.SENSOR, eui, pos, status));
+
+                        // Subscribe to status updates from the sensor
+                        mediator.tell(new DistributedPubSubMediator.Subscribe(internalSensorStatusTopic, self()), self());
 
                         // Tell the GatewayStatusBroker to listen to events from this sensor
                         context().system().actorSelection("/user/externalResourceSupervisor/ttn-"+name+"-broker-supervisor/ttn-"+name+"-broker").tell(
@@ -180,7 +191,10 @@ public class SiteActor extends UntypedActor {
 
     @Override
     public void onReceive(Object message) {
-        log.info("Received: {} from {}", message, getSender());
-        // TODO: Handle adding of new devices through messages here, instead of reading from file!
+        log.debug("Received: {} from {}", message, getSender());
+        if (message instanceof MqttPublishMessage) {
+            // TODO: Update the network graph. Change MqttPublishMessage to more generic StatusMessage and let MqttActor
+            // convert to MqttMessage and build topic based on the info in the StatusMessage.
+        }
     }
 }

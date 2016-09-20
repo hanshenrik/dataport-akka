@@ -76,8 +76,6 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
         when(DeviceState.UNINITIALIZED,
                 matchEvent(DistributedPubSubMediator.SubscribeAck.class,
                         (event, data) -> {
-                            context().parent().tell(String.format("Sensor now subscribing, going from state %s to %s",
-                                    DeviceState.UNINITIALIZED, DeviceState.UNKNOWN), self());
                             return goTo(DeviceState.UNKNOWN).using(initialData);
                         })
         );
