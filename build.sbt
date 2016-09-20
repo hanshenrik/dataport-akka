@@ -2,7 +2,7 @@ import NativePackagerHelper._
 
 name := """dataport-akka"""
 
-version := "0.4"
+version := "0.5"
 
 scalaVersion := "2.11.7"
 ivyScala := ivyScala.value map { _.copy(overrideScalaVersion = true) }
@@ -31,4 +31,4 @@ libraryDependencies ++= Seq(
 enablePlugins(JavaServerAppPackaging)
 mainClass in Compile := Some("no.ntnu.dataport.DataportMain")
 
-licenses := Seq(("CC0", url("http://creativecommons.org/publicdomain/zero/1.0")))
+licenses := Seq(("Apache-2.0", url("https://www.apache.org/licenses/LICENSE-2.0.html")))
