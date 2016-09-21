@@ -81,6 +81,15 @@ public class Messages {
 
     public static final class StagingObservation {
         public String payload;
+        public float co2;
+        public float no2;
+        public float temperature;
+        public float humidity;
+        public float preassure;
+        public float pm1;
+        public float pm2;
+        public float pm10;
+        public int batteryLevel;
         public String dev_eui;
         public List<Metadata> metadata;
 
@@ -108,6 +117,78 @@ public class Messages {
             this.metadata = metadata;
         }
 
+        public float getCo2() {
+            return co2;
+        }
+
+        public void setCo2(float co2) {
+            this.co2 = co2;
+        }
+
+        public float getNo2() {
+            return no2;
+        }
+
+        public void setNo2(float no2) {
+            this.no2 = no2;
+        }
+
+        public float getTemperature() {
+            return temperature;
+        }
+
+        public void setTemperature(float temperature) {
+            this.temperature = temperature;
+        }
+
+        public float getHumidity() {
+            return humidity;
+        }
+
+        public void setHumidity(float humidity) {
+            this.humidity = humidity;
+        }
+
+        public float getPreassure() {
+            return preassure;
+        }
+
+        public void setPreassure(float preassure) {
+            this.preassure = preassure;
+        }
+
+        public float getPm1() {
+            return pm1;
+        }
+
+        public void setPm1(float pm1) {
+            this.pm1 = pm1;
+        }
+
+        public float getPm2() {
+            return pm2;
+        }
+
+        public void setPm2(float pm2) {
+            this.pm2 = pm2;
+        }
+
+        public float getPm10() {
+            return pm10;
+        }
+
+        public void setPm10(float pm10) {
+            this.pm10 = pm10;
+        }
+
+        public int getBatteryLevel() {
+            return batteryLevel;
+        }
+
+        public void setBatteryLevel(int batteryLevel) {
+            this.batteryLevel = batteryLevel;
+        }
+
         public static class Metadata {
             public String gateway_eui;
             public String datarate;
@@ -119,6 +200,9 @@ public class Messages {
             public int channel;
             public int rfchain;
             public int crc;
+            public double altitude;
+            public double longitude;
+            public double latitude;
 
             public String getGateway_eui() {
                 return gateway_eui;
@@ -198,6 +282,30 @@ public class Messages {
 
             public void setCrc(int crc) {
                 this.crc = crc;
+            }
+
+            public double getAltitude() {
+                return altitude;
+            }
+
+            public void setAltitude(double altitude) {
+                this.altitude = altitude;
+            }
+
+            public double getLongitude() {
+                return longitude;
+            }
+
+            public void setLongitude(double longitude) {
+                this.longitude = longitude;
+            }
+
+            public double getLatitude() {
+                return latitude;
+            }
+
+            public void setLatitude(double latitude) {
+                this.latitude = latitude;
             }
         }
     }

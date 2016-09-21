@@ -16,10 +16,16 @@ import net.gpedro.integrations.slack.SlackMessage;
 import no.ntnu.dataport.types.*;
 import no.ntnu.dataport.types.Messages.*;
 import no.ntnu.dataport.utils.SecretStuff;
+import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.codec.binary.Base64;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.joda.time.DateTime;
 import scala.Option;
 import scala.concurrent.duration.FiniteDuration;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
 
 public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
 
@@ -92,16 +98,12 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                                 .body(new JsonNode("{fields: {status: " + DeviceState.OK + "}}"))
                                 .asJson().getStatus();
 
-                            if (stateData().getAppEui().equals("+")) {
-                                stateData().setLastObservation(convertToObservation(message));
-                            }
-                            else {
-                                StagingObservation stagingObservation = convertToStagingObservation(message);
-                                stateData().setLastObservation(convertToObservation(stagingObservation));
-                            }
+                            StagingObservation stagingObservation = convertToStagingObservation(message);
+
+                            stateData().setLastObservation(convertToObservation(stagingObservation));
                             stateData().withLastSeen(DateTime.now());
-                            stateData().setBatteryLevel(-1);
-                            stateData().setCo2(-1);
+                            stateData().setBatteryLevel(stagingObservation.getBatteryLevel());
+                            stateData().setCo2(stagingObservation.getCo2());
 
                             // Tell the gateway where I am so it can calculate maxObservedRange
                             context().system().actorSelection("/user/"+stateData().getCity()+"/"+stateData().getLastObservation().gatewayEui)
@@ -148,16 +150,12 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                             return goTo(DeviceState.UNKNOWN).using(stateData().withState(DeviceState.UNKNOWN));
                         }).event(MqttMessage.class,
                         (message, data) -> {
-                            if (stateData().getAppEui().equals("+")) {
-                                stateData().setLastObservation(convertToObservation(message));
-                            }
-                            else {
-                                StagingObservation stagingObservation = convertToStagingObservation(message);
-                                stateData().setLastObservation(convertToObservation(stagingObservation));
-                            }
+                            StagingObservation stagingObservation = convertToStagingObservation(message);
+
+                            stateData().setLastObservation(convertToObservation(stagingObservation));
                             stateData().withLastSeen(DateTime.now());
-                            stateData().setBatteryLevel(-1);
-                            stateData().setCo2(-1);
+                            stateData().setBatteryLevel(stagingObservation.getBatteryLevel());
+                            stateData().setCo2(stagingObservation.getCo2());
 
                             // Tell the gateway where I am so it can calculate maxObservedRange
                             context().system().actorSelection("/user/"+stateData().getCity()+"/"+stateData().getLastObservation().gatewayEui)
@@ -181,12 +179,52 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
         initialize();
     }
 
-    private StagingObservation convertToStagingObservation(MqttMessage message) {
-        return gson.fromJson(new String(message.getPayload()), StagingObservation.class);
+    private float hex8BytesToFloat(String hex) {
+        Long value = Long.parseLong(hex, 16);
+        ByteBuffer buffer = ByteBuffer.allocate(8);
+        buffer.order(ByteOrder.LITTLE_ENDIAN);
+        buffer.asLongBuffer().put(value);
+        buffer.order(ByteOrder.BIG_ENDIAN);
+        return buffer.asFloatBuffer().get();
     }
 
-    private Observation convertToObservation(MqttMessage message) {
-        return gson.fromJson(new String(message.getPayload()), Observation.class);
+    private int hex2BytesToInt(String hex) {
+        return Integer.parseInt(hex, 16);
+    }
+
+    private StagingObservation convertToStagingObservation(MqttMessage message) {
+        StagingObservation stagingObservation = gson.fromJson(new String(message.getPayload()), StagingObservation.class);
+
+        String payloadBase64 = stagingObservation.payload;
+        byte[] payloadBytes = Base64.decodeBase64(payloadBase64);
+        String payloadHexWithHeader = Hex.encodeHexString(payloadBytes);
+        String payloadHexOnlyData = payloadHexWithHeader.substring(36); // Skip the header
+        float co2 = hex8BytesToFloat(payloadHexOnlyData.substring(2, 10));
+        float no2 = hex8BytesToFloat(payloadHexOnlyData.substring(12, 20));
+        float temp = hex8BytesToFloat(payloadHexOnlyData.substring(22, 30));
+        float hum = hex8BytesToFloat(payloadHexOnlyData.substring(32, 40));
+        float pres = hex8BytesToFloat(payloadHexOnlyData.substring(42, 50));
+        int bat;
+        if (payloadHexOnlyData.length() > 55) {
+            float pm1 = hex8BytesToFloat(payloadHexOnlyData.substring(52, 60));
+            float pm2 = hex8BytesToFloat(payloadHexOnlyData.substring(62, 70));
+            float pm10 = hex8BytesToFloat(payloadHexOnlyData.substring(72, 80));
+            bat = hex2BytesToInt(payloadHexOnlyData.substring(82, 84));
+            stagingObservation.setPm1(pm1);
+            stagingObservation.setPm2(pm2);
+            stagingObservation.setPm10(pm10);
+        }
+        else {
+            bat = hex2BytesToInt(payloadHexOnlyData.substring(52, 54));
+        }
+
+        stagingObservation.setCo2(co2);
+        stagingObservation.setNo2(no2);
+        stagingObservation.setTemperature(temp);
+        stagingObservation.setHumidity(hum);
+        stagingObservation.setPreassure(pres);
+        stagingObservation.setBatteryLevel(bat);
+        return stagingObservation;
     }
 
     private Observation convertToObservation(StagingObservation so) {
