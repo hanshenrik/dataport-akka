@@ -58,6 +58,7 @@ public class SiteActor extends UntypedActor {
     List<NetworkComponent> networkComponents = new ArrayList<>();
     Map<String, NetworkComponent> networkComponentMap = new HashMap<>();
     final String networkGraphTopic;
+    final String siteStatsTopic;
 
     private final Cancellable periodicNetworkGraphMessage;
 
@@ -70,6 +71,7 @@ public class SiteActor extends UntypedActor {
         log.debug("Constructor called with name: {}, lat: {}, lon: {}", name, position.lat, position.lon);
         this.name = name;
         this.networkGraphTopic = "dataport/site/" + name + "/graph";
+        this.siteStatsTopic = "dataport/site/" + name + "/stats";
         this.appEui = appEui;
         this.position = position;
         this.mediator = DistributedPubSub.get(context().system()).mediator();
@@ -110,7 +112,7 @@ public class SiteActor extends UntypedActor {
                 try {
                     pos = new Position(fields.getDouble("latitude"), fields.getDouble("longitude"));
                 } catch (JSONException e) {
-                    log.warning("Device {} didn't have position in Aritable, it will not be created!", eui);
+                    log.error("Device {} didn't have position in Aritable, it will not be created!", eui);
                     continue;
                 }
 
