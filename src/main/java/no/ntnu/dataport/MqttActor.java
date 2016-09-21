@@ -168,9 +168,9 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
         setState(State.CONNECTED);
         // TODO: set state to connected again
         if (reconnect) {
-            getContext().parent().tell("I RECONNETED to my MQTT broker!", getSelf());
+            log.info("I RECONNETED to my MQTT broker!");
         } else {
-            getContext().parent().tell("I connected to my MQTT broker for the first time", getSelf());
+            log.info("I connected to my MQTT broker for the first time");
         }
     }
 
@@ -188,7 +188,7 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
 
     @Override
     protected void transition(State old, State next) {
-        getContext().parent().tell("Changed from state: "+old+" to "+next, getSelf());
+        log.info("Going from {} to {}", old, next);
     }
 }
 
