@@ -100,27 +100,24 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
 
                             StagingObservation stagingObservation = convertToStagingObservation(message);
 
+                            // TODO: don't use .now(), make JSON message into object before sending internally, add getTimestamp or something
                             stateData().setLastObservation(convertToObservation(stagingObservation));
-                            stateData().withLastSeen(DateTime.now());
+                            stateData().setLastSeen(DateTime.now());
                             stateData().setBatteryLevel(stagingObservation.getBatteryLevel());
                             stateData().setCo2(stagingObservation.getCo2());
+                            stateData().setStatus(DeviceState.OK);
 
                             // Tell the gateway where I am so it can calculate maxObservedRange
                             context().system().actorSelection("/user/"+stateData().getCity()+"/"+stateData().getLastObservation().gatewayEui)
                                     .tell(stateData().getPosition(), self());
 
                             // Tell all interested that I am changing my state
-                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
-                                new MqttPublishMessage(internalStatusPublishTopic,
-                                    new MqttMessage(gson.toJson(stateData().withState(DeviceState.OK)).getBytes()))), self());
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
 
                             // Publish my reception to all interested
-                            mediator.tell(new DistributedPubSubMediator.Publish(internalReceptionPublishTopic,
-                                new MqttPublishMessage(internalReceptionPublishTopic,
-                                    new MqttMessage(gson.toJson(stateData().getLastObservation()).getBytes()))), self());
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalReceptionPublishTopic, stateData().getLastObservation()), self());
 
-                            return goTo(DeviceState.OK).using(stateData().withLastSeen(DateTime.now()));
-                            // TODO: don't use .now(), make JSON message into object before sending internally, add getTimestamp or something
+                            return goTo(DeviceState.OK).using(stateData());
                         }
                 ).event(DistributedPubSubMediator.SubscribeAck.class,
                         (event, data) -> {
@@ -142,18 +139,18 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                             SlackApi api = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
                             api.call(new SlackMessage("Timeout! Sensor "+data.getEui()+" in "+data.getCity() + " has been inactive for "+stateData().getTimeout()));
 
-                            // Tell all interested that I am changing my state
-                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
-                                new MqttPublishMessage(internalStatusPublishTopic,
-                                    new MqttMessage(gson.toJson(stateData().withState(DeviceState.UNKNOWN)).getBytes()))), self());
+                            stateData().setStatus(DeviceState.UNKNOWN);
 
-                            return goTo(DeviceState.UNKNOWN).using(stateData().withState(DeviceState.UNKNOWN));
+                            // Tell all interested that I am changing my state
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
+
+                            return goTo(DeviceState.UNKNOWN).using(stateData());
                         }).event(MqttMessage.class,
                         (message, data) -> {
                             StagingObservation stagingObservation = convertToStagingObservation(message);
 
                             stateData().setLastObservation(convertToObservation(stagingObservation));
-                            stateData().withLastSeen(DateTime.now());
+                            stateData().setLastSeen(DateTime.now());
                             stateData().setBatteryLevel(stagingObservation.getBatteryLevel());
                             stateData().setCo2(stagingObservation.getCo2());
 
@@ -162,16 +159,12 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                                     .tell(stateData().getPosition(), self());
 
                             // Tell all interested that I am changing my state
-                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic,
-                                    new MqttPublishMessage(internalStatusPublishTopic,
-                                            new MqttMessage(gson.toJson(stateData()).getBytes()))), self());
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
 
                             // Publish my reception to all interested
-                            mediator.tell(new DistributedPubSubMediator.Publish(internalReceptionPublishTopic,
-                                    new MqttPublishMessage(internalReceptionPublishTopic,
-                                            new MqttMessage(gson.toJson(stateData().getLastObservation()).getBytes()))), self());
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalReceptionPublishTopic, stateData().getLastObservation()), self());
 
-                            return stay().using(stateData().withLastSeen(DateTime.now()));
+                            return stay().using(stateData());
                         }));
 
         onTransition(this::handler);

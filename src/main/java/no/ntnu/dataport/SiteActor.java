@@ -9,7 +9,9 @@ import akka.cluster.pubsub.DistributedPubSubMediator;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
+import com.fatboyindustrial.gsonjodatime.Converters;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.mashape.unirest.http.HttpResponse;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
@@ -17,6 +19,7 @@ import com.mashape.unirest.http.exceptions.UnirestException;
 import no.ntnu.dataport.types.*;
 import no.ntnu.dataport.types.Messages.*;
 import no.ntnu.dataport.utils.SecretStuff;
+import org.joda.time.DateTime;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -61,6 +64,7 @@ public class SiteActor extends UntypedActor {
     final String siteStatsTopic;
 
     private final Cancellable periodicNetworkGraphMessage;
+    private final Gson gson;
 
     @Override
     public void postStop() {
@@ -75,6 +79,7 @@ public class SiteActor extends UntypedActor {
         this.appEui = appEui;
         this.position = position;
         this.mediator = DistributedPubSub.get(context().system()).mediator();
+        this.gson = Converters.registerDateTime(new GsonBuilder()).create();
 
         // Tell the Dataport MQTTActor to listen to the network graph topic for this site
         getContext().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
@@ -82,7 +87,7 @@ public class SiteActor extends UntypedActor {
 
         this.periodicNetworkGraphMessage = getContext().system().scheduler().schedule(
                 Duration.create(5, TimeUnit.SECONDS),
-                Duration.create(60, TimeUnit.SECONDS),
+                Duration.create(10, TimeUnit.SECONDS),
                 new Runnable() {
                     @Override
                     public void run() {
@@ -184,19 +189,32 @@ public class SiteActor extends UntypedActor {
     }
 
     private String getNetworkGraph() {
-        return new Gson().toJson(networkComponents);
+        return gson.toJson(networkComponentMap.values());
     }
 
     private NetworkGraphMessage getNetworkGraphMessage() {
         return new NetworkGraphMessage(getNetworkGraph(), networkGraphTopic);
     }
 
+    private void updateNetworkComponent(String eui, NetworkComponent updatedNetworkComponent) {
+        networkComponentMap.put(eui, updatedNetworkComponent);
+    }
+
     @Override
     public void onReceive(Object message) {
         log.debug("Received: {} from {}", message, getSender());
-        if (message instanceof MqttPublishMessage) {
-            // TODO: Update the network graph. Change MqttPublishMessage to more generic StatusMessage and let MqttActor
-            // convert to MqttMessage and build topic based on the info in the StatusMessage.
+        if (message instanceof SensorData) {
+            String eui = ((SensorData) message).getEui();
+            DeviceState status = ((SensorData) message).getStatus();
+            DateTime lastSeen = ((SensorData) message).getLastSeen();
+            updateNetworkComponent(eui, networkComponentMap.get(eui).withStatus(status).withLastSeen(lastSeen));
+        }
+        else if (message instanceof GatewayData) {
+            String eui = ((GatewayData) message).getEui();
+            DeviceState status = ((GatewayData) message).getStatus();
+            DateTime lastSeen = ((GatewayData) message).getLastSeen();
+            double maxObservedRange = ((GatewayData) message).getMaxObservedRange();
+            updateNetworkComponent(eui, networkComponentMap.get(eui).withStatus(status).withLastSeen(lastSeen).withMaxObservedRange(maxObservedRange));
         }
     }
 }

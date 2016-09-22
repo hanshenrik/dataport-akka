@@ -7,7 +7,12 @@ import akka.cluster.pubsub.DistributedPubSubMessage;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
+import com.fatboyindustrial.gsonjodatime.Converters;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import no.ntnu.dataport.types.GatewayData;
 import no.ntnu.dataport.types.Messages.*;
+import no.ntnu.dataport.types.SensorData;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
@@ -45,6 +50,7 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
     final String username;
     final String password;
     final MqttConnectOptions connectionOptions;
+    final Gson gson;
 
     @Override
     public void preStart() {
@@ -59,6 +65,7 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
         this.password   = password;
         this.clientId   = "client-" + UUID.randomUUID().toString();
         this.content    = "MQTT actor started successfully!";
+        this.gson = Converters.registerDateTime(new GsonBuilder()).create();
 
         MemoryPersistence persistence = new MemoryPersistence();
         MqttClient mqttClient = new MqttClient(broker, clientId, persistence);
@@ -102,7 +109,23 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
             log.debug("### ACK for subscribing");
         }
         else if (message instanceof MqttPublishMessage) {
+            log.warning("Deprecated message type MqttPublishMessage!");
             getMqttClient().publish(((MqttPublishMessage) message).topic, ((MqttPublishMessage) message).mqttMessage);
+        }
+        else if (message instanceof Observation) {
+            String topic = "dataport/site/" + sender().path().parent().name() + "/sensor/" + sender().path().name() + "/events/reception";
+            MqttMessage mqttMessage = new MqttMessage(gson.toJson(message).getBytes());
+            getMqttClient().publish(topic, mqttMessage);
+        }
+        else if (message instanceof SensorData) {
+            String topic = "dataport/site/" + sender().path().parent().name() + "/sensor/" + sender().path().name() + "/events/status";
+            MqttMessage mqttMessage = new MqttMessage(gson.toJson(message).getBytes());
+            getMqttClient().publish(topic, mqttMessage);
+        }
+        else if (message instanceof GatewayData) {
+            String topic = "dataport/site/" + sender().path().parent().name() + "/gateway/" + sender().path().name() + "/events/status";
+            MqttMessage mqttMessage = new MqttMessage(gson.toJson(message).getBytes());
+            getMqttClient().publish(topic, mqttMessage);
         }
         else if (message instanceof NetworkGraphMessage) {
             String topic = ((NetworkGraphMessage) message).topic;
@@ -148,14 +171,14 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
     @Override
     public void connectionLost(Throwable cause) {
         setState(State.DISCONNECTED);
-        getContext().parent().tell("I lost my MQTT connection!", getSelf());
+        log.error("Damn! I lost my MQTT connection.");
         // TODO: Can we get this to just throw the exception, so that it is handled in the supervisors
         // SupervisorStragegy? Sending an excplicit mqttMessage for this failure is probably not the cleanest
         // approach...
         // TODO: Set state to TRYING_TO_CONNECT
         // TODO: Tell parent i changed state (always do this?)
         if (INTERNAL_FAULT_HANDLING) {
-            log.error(cause, "Lost MQTT connection! MqttClient's automatic reconnect kicking in");
+            log.info("MqttClient's automatic reconnect kicking in because of: "+cause.getMessage());
             // do nothing, Paho automatic retry should be set to true
         } else {
             // Send exception as mqttMessage to self and throw it there, since this method doesn't allow throwing exceptions

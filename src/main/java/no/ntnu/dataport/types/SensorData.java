@@ -33,9 +33,12 @@ public class SensorData {
         return airtableID;
     }
 
-    public SensorData withState(DeviceState state) {
-        this.status = state;
-        return this;
+    public DeviceState getStatus() {
+        return status;
+    }
+
+    public void setStatus(DeviceState status) {
+        this.status = status;
     }
 
     public String getEui() {
@@ -50,36 +53,20 @@ public class SensorData {
         return city;
     }
 
-    public SensorData withCity(String city) {
-        this.city = city;
-        return this;
-    }
-
     public Position getPosition() {
         return position;
-    }
-
-    public SensorData withPosition(Position position) {
-        this.position = position;
-        return this;
     }
 
     public FiniteDuration getTimeout() {
         return timeout;
     }
 
-    public SensorData withTimeout(FiniteDuration timeout) {
-        this.timeout = timeout;
-        return this;
-    }
-
     public DateTime getLastSeen() {
         return lastSeen;
     }
 
-    public SensorData withLastSeen(DateTime lastSeen) {
+    public void setLastSeen(DateTime lastSeen) {
         this.lastSeen = lastSeen;
-        return this;
     }
 
     public Messages.Observation getLastObservation() {
@@ -88,11 +75,6 @@ public class SensorData {
 
     public void setLastObservation(Messages.Observation lastObservation) {
         this.lastObservation = lastObservation;
-    }
-
-    public SensorData withLastObservation(Messages.Observation observation) {
-        this.lastObservation = observation;
-        return this;
     }
 
     public double getCo2() {

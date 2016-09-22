@@ -64,7 +64,7 @@ public class Messages {
         public final double rssi;
         public final double snr;
         public final String dataRate;
-        public final String data;
+        public transient final String data;
 
         public Observation(String nodeEui, String gatewayEui, DateTime time, double frequency, String dataRate,
                            double rssi, double snr, String data) {

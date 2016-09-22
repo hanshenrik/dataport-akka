@@ -33,25 +33,18 @@ public class GatewayData {
         return maxObservedRange;
     }
 
-    public GatewayData withMaxObservedRange(double maxObservedRange) {
+    public void setMaxObservedRange(double maxObservedRange) {
         if (maxObservedRange > this.maxObservedRange) {
             this.maxObservedRange = maxObservedRange;
         }
-        return this;
-    }
-
-    public GatewayData withState(DeviceState state) {
-        this.status = state;
-        return this;
     }
 
     public DateTime getLastSeen() {
         return lastSeen;
     }
 
-    public GatewayData withLastSeen(DateTime lastSeen) {
+    public void setLastSeen(DateTime lastSeen) {
         this.lastSeen = lastSeen;
-        return this;
     }
 
     public String getEui() {
@@ -62,9 +55,8 @@ public class GatewayData {
         return city;
     }
 
-    public GatewayData withCity(String city) {
+    public void setCity(String city) {
         this.city = city;
-        return this;
     }
 
 
@@ -72,12 +64,19 @@ public class GatewayData {
         return position;
     }
 
-    public GatewayData withPosition(Position position) {
+    public void setPosition(Position position) {
         this.position = position;
-        return this;
     }
 
     public FiniteDuration getTimeout() {
         return timeout;
+    }
+
+    public DeviceState getStatus() {
+        return status;
+    }
+
+    public void setStatus(DeviceState status) {
+        this.status = status;
     }
 }
