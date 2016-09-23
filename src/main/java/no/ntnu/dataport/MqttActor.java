@@ -41,7 +41,7 @@ public class MqttActor extends MqttFSMBase implements MqttCallbackExtended {
     ActorRef mediator = DistributedPubSub.get(getContext().system()).mediator();
 
     // DEV
-    private static boolean INTERNAL_FAULT_HANDLING = false;
+    private static boolean INTERNAL_FAULT_HANDLING = true;
 
     final String broker;
     final int qos;
