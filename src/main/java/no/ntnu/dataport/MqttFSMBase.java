@@ -32,10 +32,6 @@ public abstract class MqttFSMBase extends UntypedActor {
     /*
      * Here are the interrogation methods:
      */
-    protected boolean isInitialized() {
-        return mqttClient != null;
-    }
-
     protected MqttClient getMqttClient() {
         return mqttClient;
     }

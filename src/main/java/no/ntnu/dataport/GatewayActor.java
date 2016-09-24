@@ -54,6 +54,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
         this.internalStatusPublishTopic = "dataport/site/" + city + "/gateway/" + eui + "/events/status";
         this.receiveStatusTopic = "external/gateways/" + eui + "/status";
+
         setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
         mediator.tell(new DistributedPubSubMediator.Subscribe(receiveStatusTopic, self()), self());
@@ -72,9 +73,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
 
         when(DeviceState.UNINITIALIZED,
                 matchEvent(DistributedPubSubMediator.SubscribeAck.class,
-                        (event, data) -> {
-                            return goTo(DeviceState.UNKNOWN).using(initialData);
-                        })
+                        (event, data) -> goTo(DeviceState.UNKNOWN).using(initialData))
         );
 
         when(DeviceState.UNKNOWN,
@@ -105,6 +104,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
 
                             stateData().setMaxObservedRange(distance);
                             stateData().setLastSeen(DateTime.now());
+                            stateData().setStatus(DeviceState.OK);
 
                             mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
 

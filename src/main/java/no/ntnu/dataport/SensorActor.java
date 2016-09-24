@@ -81,9 +81,7 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
 
         when(DeviceState.UNINITIALIZED,
                 matchEvent(DistributedPubSubMediator.SubscribeAck.class,
-                        (event, data) -> {
-                            return goTo(DeviceState.UNKNOWN).using(initialData);
-                        })
+                        (event, data) -> goTo(DeviceState.UNKNOWN).using(initialData))
         );
 
         when(DeviceState.UNKNOWN,
@@ -120,10 +118,7 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                             return goTo(DeviceState.OK).using(stateData());
                         }
                 ).event(DistributedPubSubMediator.SubscribeAck.class,
-                        (event, data) -> {
-                            context().parent().tell("Sensor now subscribing to another internal topic", self());
-                            return stay();
-                        })
+                        (event, data) -> stay())
         );
 
         when(DeviceState.OK, null, // timeout duration is set in the constructor

@@ -1,44 +1,15 @@
 package no.ntnu.dataport.types;
 
-import com.google.gson.annotations.SerializedName;
-import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.joda.time.DateTime;
 
-import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 
 public class Messages {
-    public static final class MqttConnectionStatusMessage implements Serializable {}
-
-    public static final class MqttSubscribeMessage {
-        public final String topic;
-
-        public MqttSubscribeMessage(String topic) {
-            this.topic = topic;
-        }
-    }
-    public static final class MqttPublishMessage {
-        public final String topic;
-        public final MqttMessage mqttMessage;
-
-        public MqttPublishMessage(String topic, MqttMessage mqttMessage){
-            this.topic = topic;
-            this.mqttMessage = mqttMessage;
-        }
-    }
     public static final class NetworkGraphMessage {
-        public final String graph;
-        public final String topic;
-        public NetworkGraphMessage(String graph, String topic) {
+        public final Map<String, NetworkComponent> graph;
+        public NetworkGraphMessage(Map<String, NetworkComponent> graph) {
             this.graph = graph;
-            this.topic = topic;
-        }
-    }
-
-    public static final class SubscribeToInternalTopicMessage {
-        public final String topic;
-        public SubscribeToInternalTopicMessage(String topic) {
-            this.topic = topic;
         }
     }
 

@@ -74,26 +74,17 @@ public class SiteActor extends UntypedActor {
     public SiteActor(String name, String appEui, Position position) {
         log.debug("Constructor called with name: {}, lat: {}, lon: {}", name, position.lat, position.lon);
         this.name = name;
-        this.networkGraphTopic = "dataport/site/" + name + "/graph";
+        this.networkGraphTopic = "dataport/site/graphs";
         this.siteStatsTopic = "dataport/site/" + name + "/stats";
         this.appEui = appEui;
         this.position = position;
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
 
-        // Tell the Dataport MQTTActor to listen to the network graph topic for this site
-        getContext().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                new Messages.SubscribeToInternalTopicMessage(networkGraphTopic), self());
-
         this.periodicNetworkGraphMessage = getContext().system().scheduler().schedule(
                 Duration.create(5, TimeUnit.SECONDS),
-                Duration.create(10, TimeUnit.SECONDS),
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        mediator.tell(new DistributedPubSubMediator.Publish(networkGraphTopic, getNetworkGraphMessage()), self());
-                    }
-                },
+                Duration.create(20, TimeUnit.SECONDS),
+                () -> mediator.tell(new DistributedPubSubMediator.Publish(networkGraphTopic, getNetworkGraphMessage()), self()),
                 getContext().dispatcher());
 
         try {
@@ -106,7 +97,7 @@ public class SiteActor extends UntypedActor {
             String airtableID, eui, type;
             Position pos;
             FiniteDuration timeout;
-            DeviceState status;
+            DeviceState status = DeviceState.UNKNOWN;
             for (Object device : devices) {
                 airtableID = ((JSONObject) device).getString("id");
                 JSONObject fields = ((JSONObject) device).getJSONObject("fields");
@@ -121,19 +112,18 @@ public class SiteActor extends UntypedActor {
                     continue;
                 }
 
-                try {
-                    status = DeviceState.valueOf(fields.getString("status"));
-                } catch (JSONException e) {
-                    status = DeviceState.UNKNOWN;
-                    log.warning("Device {} didn't have status in Airtable, setting status to {}", eui, status);
-                }
+//                try {
+//                    status = DeviceState.valueOf(fields.getString("status"));
+//                } catch (JSONException e) {
+//                    status = DeviceState.UNKNOWN;
+//                    log.warning("Device {} didn't have status in Airtable, setting status to {}", eui, status);
+//                }
 
                 switch (type.toLowerCase()) {
                     case "gateway":
                         // Create gateway actor
                         getContext().actorOf(GatewayActor.props(eui, airtableID, appEui, this.name, pos, timeout), eui);
 
-                        String externalGatewayStatusTopic = "gateways/" + eui + "/status";
                         String internalGatewayStatusTopic = "dataport/site/" + name + "/gateway/" + eui + "/events/status";
 
                         // Know that it exists, so we can keep an updated network graph
@@ -142,22 +132,12 @@ public class SiteActor extends UntypedActor {
 
                         // Subscribe to status updates from the gateway
                         mediator.tell(new DistributedPubSubMediator.Subscribe(internalGatewayStatusTopic, self()), self());
-
-                        // Tell the GatewayStatusBroker to listen to status messages from this gateway
-                        context().system().actorSelection("/user/externalResourceSupervisor/ttnGatewayStatusBrokerSupervisor/ttnGatewayStatusBroker").tell(
-                                new MqttSubscribeMessage(externalGatewayStatusTopic), self());
-
-                        // Tell the DataportBroker to listen to the gateway status messages
-                        getContext().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                new Messages.SubscribeToInternalTopicMessage(internalGatewayStatusTopic), self());
                         break;
                     case "sensor":
                         // Create sensor actor
                         context().actorOf(SensorActor.props(eui, airtableID, appEui, this.name, pos, timeout), eui);
 
-                        String externalSensorReceptionTopic = appEui + "/devices/" + eui + "/up";
                         String internalSensorStatusTopic = "dataport/site/" + name + "/sensor/" + eui + "/events/status";
-                        String internalSensorReceptionTopic = "dataport/site/" + name + "/sensor/" + eui + "/events/reception";
 
                         // Know that it exists, so we can keep an updated network graph
                         networkComponents.add(new NetworkComponent(DeviceType.SENSOR, eui, pos, status));
@@ -165,18 +145,6 @@ public class SiteActor extends UntypedActor {
 
                         // Subscribe to status updates from the sensor
                         mediator.tell(new DistributedPubSubMediator.Subscribe(internalSensorStatusTopic, self()), self());
-
-                        // Tell the GatewayStatusBroker to listen to events from this sensor
-                        context().system().actorSelection("/user/externalResourceSupervisor/ttn-"+name+"-broker-supervisor/ttn-"+name+"-broker").tell(
-                                new MqttSubscribeMessage(externalSensorReceptionTopic), self());
-
-                        // Tell the DataportBroker to listen to the sensor status messages
-                        getContext().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                new Messages.SubscribeToInternalTopicMessage(internalSensorStatusTopic), self());
-
-                        // Tell the DataportBroker to listen to the sensor reception messages
-                        getContext().actorSelection("/user/externalResourceSupervisor/dataportBrokerSupervisor/dataportBroker").tell(
-                                new Messages.SubscribeToInternalTopicMessage(internalSensorReceptionTopic), self());
                         break;
                     default:
                         log.warning("Unknown device type: {}", type);
@@ -188,12 +156,8 @@ public class SiteActor extends UntypedActor {
         }
     }
 
-    private String getNetworkGraph() {
-        return gson.toJson(networkComponentMap.values());
-    }
-
     private NetworkGraphMessage getNetworkGraphMessage() {
-        return new NetworkGraphMessage(getNetworkGraph(), networkGraphTopic);
+        return new NetworkGraphMessage(networkComponentMap);
     }
 
     private void updateNetworkComponent(String eui, NetworkComponent updatedNetworkComponent) {

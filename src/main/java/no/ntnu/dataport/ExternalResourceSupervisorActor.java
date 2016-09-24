@@ -9,7 +9,6 @@ import akka.pattern.Backoff;
 import akka.pattern.BackoffOptions;
 import akka.pattern.BackoffSupervisor;
 import no.ntnu.dataport.types.Messages;
-import no.ntnu.dataport.utils.SecretStuff;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import scala.concurrent.duration.Duration;
 
@@ -39,10 +38,10 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
         this.monitoredApplications = new ArrayList<>();
 
         // Connect to gateway status broker
-        Props ttnGatewayStatusBrokerProps = MqttActor.props("tcp://croft.thethings.girovito.nl:1883", 0, null, null);
+        Props ttnGatewayStatusBrokerProps = GatewayStatusMqttActor.props("tcp://croft.thethings.girovito.nl:1883");
 
         // Connect to our broker to publish message to the website, dataport.item.ntnu.no
-        Props dataportBrokerProps = MqttActor.props("tcp://dataport.item.ntnu.no:1883", 0, null, null);
+        Props dataportBrokerProps = PublishingMqttActor.props("tcp://dataport.item.ntnu.no:1883", null, null);
 
         BackoffOptions dataportBrokerBackoffOptions= Backoff.onFailure(
                 dataportBrokerProps,
@@ -72,7 +71,8 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
         log.debug("Received {} from {}", message, getSender());
         if (message instanceof Messages.MonitorApplicationMessage) {
             String actorName = "ttn-" + ((Messages.MonitorApplicationMessage) message).name + "-broker";
-            Props applicationBrokerProps = MqttActor.props("tcp://staging.thethingsnetwork.org:1883", 0,
+            Props applicationBrokerProps = ApplicationMqttActor.props(
+                    "tcp://staging.thethingsnetwork.org:1883",
                     ((Messages.MonitorApplicationMessage) message).appEui,
                     ((Messages.MonitorApplicationMessage) message).appKey);
 

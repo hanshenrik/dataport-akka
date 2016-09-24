@@ -17,6 +17,14 @@ public class NetworkComponent {
         this.status = status;
     }
 
+    public DeviceType getType() {
+        return type;
+    }
+
+    public String getEui() {
+        return eui;
+    }
+
     public NetworkComponent withStatus(DeviceState status) {
         this.status = status;
         return this;
