@@ -7,7 +7,7 @@ version := "0.8"
 scalaVersion := "2.11.7"
 ivyScala := ivyScala.value map { _.copy(overrideScalaVersion = true) }
 
-lazy val akkaVersion = "2.4.9"
+lazy val akkaVersion = "2.4.10"
 
 resolvers += "Typesafe Repo" at "http://repo.typesafe.com/typesafe/releases/"
 
