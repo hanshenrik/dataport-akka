@@ -25,11 +25,15 @@ import scala.concurrent.duration.FiniteDuration;
 public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
 
     /**
-     * @param eui       The EUI of the gateway
-     * @param appEui    The EUI of the application this actor representation of the gateway belongs to
-     * @param position  The position of the gateway, given as latitude and longitude
-     * @return a Props for creating this actor, which can then be further configured
-     * (e.g. calling `.withDispatcher()` on it)
+     *
+     * @param eui           The eui of the gateway.
+     * @param airtableID    The record ID in Airtable for the gateway.
+     * @param appEui        The TTN AppEui.
+     * @param city          The name of the city the gateway is located in.
+     * @param position      The location of the city
+     * @param timeout       The duration before an alert is sent if no status message is received from the gateway.
+     * @return              a Props for creating this actor, which can then be further configured
+     *                      (e.g. calling `.withDispatcher()` on it)
      */
     public static Props props(final String eui, final String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
         return Props.create(new Creator<GatewayActor>() {

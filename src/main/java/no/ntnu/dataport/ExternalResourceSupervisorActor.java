@@ -95,6 +95,9 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
         }
     }
 
+    /**
+     * Supervision strategy for all Actors extending MqttFSMBase.
+     */
     private OneForOneStrategy mqttActorStrategy =
         new OneForOneStrategy(
             DeciderBuilder.

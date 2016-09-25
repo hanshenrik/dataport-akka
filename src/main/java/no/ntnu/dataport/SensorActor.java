@@ -32,11 +32,15 @@ import static no.ntnu.dataport.utils.ConvertUtils.convertToObservation;
 public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
 
     /**
-     * @param eui       The EUI of the gateway
-     * @param appEui    The EUI of the application this actor representation of the sensor belongs to
-     * @param position  The position of the gateway, given as latitude and longitude
-     * @return a Props for creating this actor, which can then be further configured
-     * (e.g. calling `.withDispatcher()` on it)
+     *
+     * @param eui           The eui of the sensor.
+     * @param airtableID    The record  ID in Airtable for the sensor.
+     * @param appEui        The TTN AppEui.
+     * @param city          The name of the city the sensor is located in.
+     * @param position      The location of the city.
+     * @param timeout       The duration before an alert is sent if no observation is received from the sensor.
+     * @return              a Props for creating this actor, which can then be further configured
+     *                      (e.g. calling `.withDispatcher()` on it)
      */
     public static Props props(final String eui, final String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
         return Props.create(new Creator<SensorActor>() {

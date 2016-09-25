@@ -14,7 +14,6 @@ import java.nio.ByteOrder;
 public class ConvertUtils {
     private static Gson gson = Converters.registerDateTime(new GsonBuilder()).create();
 
-
     public static float hex8BytesToFloat(String hex) {
         Long value = Long.parseLong(hex, 16);
         ByteBuffer buffer = ByteBuffer.allocate(8);

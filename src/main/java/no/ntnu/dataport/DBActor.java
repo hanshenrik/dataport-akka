@@ -20,6 +20,14 @@ import java.util.concurrent.TimeUnit;
 
 public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
 
+    /**
+     *
+     * @param url       The URL to the server running the InfluxDB. Must include port! E.g. 'http://myhost.com:8086'.
+     * @param username  The username for the InfluxDB.
+     * @param password  The password for the InfluxDB.
+     * @return          a Props for creating this actor, which can then be further configured
+     *                  (e.g. calling `.withDispatcher()` on it)
+     */
     public static Props props(final String url, final String username, final String password) {
         return Props.create(new Creator<DBActor>() {
             private static final long serialVersionUID = 1L;
