@@ -1,5 +1,7 @@
 package no.ntnu.dataport.types;
 
+import no.ntnu.dataport.enums.DeviceState;
+import no.ntnu.dataport.enums.DeviceType;
 import org.joda.time.DateTime;
 
 public class NetworkComponent {
@@ -8,7 +10,7 @@ public class NetworkComponent {
     private Position position;
     private DeviceState status;
     private DateTime lastSeen;
-    private double maxObservedRange;
+    private Double maxObservedRange;
 
     public NetworkComponent(DeviceType type, String eui, Position position, DeviceState status) {
         this.type = type;

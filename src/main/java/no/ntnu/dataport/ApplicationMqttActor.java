@@ -7,6 +7,7 @@ import akka.cluster.pubsub.DistributedPubSubMediator;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
+import no.ntnu.dataport.enums.MqttActorState;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
@@ -72,12 +73,12 @@ public class ApplicationMqttActor extends MqttFSMBase implements MqttCallbackExt
     }
 
     @Override
-    protected void transition(State old, State next) {
+    protected void transition(MqttActorState old, MqttActorState next) {
         log.info("Going from {} to {}", old, next);
     }
 
     private void connect() throws MqttException {
-        setState(State.CONNECTING);
+        setState(MqttActorState.CONNECTING);
         getMqttClient().connect(connectionOptions);
         log.info("Connecting to broker: {}", broker);
     }
@@ -85,13 +86,13 @@ public class ApplicationMqttActor extends MqttFSMBase implements MqttCallbackExt
     /* Paho implementation */
     @Override
     public void connectionLost(Throwable cause) {
-        setState(State.CONNECTING);
+        setState(MqttActorState.CONNECTING);
         log.info("Damn! I lost my MQTT connection. Paho's automatic reconnect with backoff kicking in because of: "+cause.getStackTrace());
     }
 
     @Override
     public void connectComplete(boolean reconnect, String serverURI) {
-        setState(State.CONNECTED);
+        setState(MqttActorState.CONNECTED);
         if (reconnect) {
             log.info("Yeah! I reconnected to my MQTT broker");
         } else {

@@ -1,22 +1,19 @@
 package no.ntnu.dataport.types;
 
-import org.eclipse.paho.client.mqttv3.MqttMessage;
+import no.ntnu.dataport.enums.DeviceState;
 import org.joda.time.DateTime;
 import scala.concurrent.duration.FiniteDuration;
 
 
 public class SensorData {
-    private final String eui;
     private final transient String airtableID;
-    private String city;
-    private String appEui;
+    private transient String city;
+    private transient String appEui;
+    private transient FiniteDuration timeout;
 
+    private final String eui;
     private Position position;
-    private FiniteDuration timeout;
-
     private DeviceState status;
-    private double co2;
-    private double batteryLevel;
     private DateTime lastSeen;
     private Messages.Observation lastObservation;
 
@@ -27,6 +24,8 @@ public class SensorData {
         this.city = city;
         this.position = position;
         this.timeout = timeout;
+
+        this.status = DeviceState.UNKNOWN;
     }
 
     public String getAirtableID() {
@@ -75,21 +74,5 @@ public class SensorData {
 
     public void setLastObservation(Messages.Observation lastObservation) {
         this.lastObservation = lastObservation;
-    }
-
-    public double getCo2() {
-        return co2;
-    }
-
-    public void setCo2(double co2) {
-        this.co2 = co2;
-    }
-
-    public double getBatteryLevel() {
-        return batteryLevel;
-    }
-
-    public void setBatteryLevel(double batteryLevel) {
-        this.batteryLevel = batteryLevel;
     }
 }

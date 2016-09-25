@@ -2,7 +2,7 @@ import NativePackagerHelper._
 
 name := """dataport-akka"""
 
-version := "0.8"
+version := "0.9"
 
 scalaVersion := "2.11.7"
 ivyScala := ivyScala.value map { _.copy(overrideScalaVersion = true) }
@@ -25,7 +25,8 @@ libraryDependencies ++= Seq(
   "com.google.code.gson" % "gson" % "2.7",
   "com.fatboyindustrial.gson-jodatime-serialisers" % "gson-jodatime-serialisers" % "1.3.0",
   "net.gpedro.integrations.slack" % "slack-webhook" % "1.1.1",
-  "com.mashape.unirest" % "unirest-java" % "1.4.9"
+  "com.mashape.unirest" % "unirest-java" % "1.4.9",
+  "org.influxdb" % "influxdb-java" % "2.3"
 )
 
 enablePlugins(JavaServerAppPackaging)

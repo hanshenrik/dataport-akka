@@ -1,17 +1,18 @@
 package no.ntnu.dataport.types;
 
+import no.ntnu.dataport.enums.DeviceState;
 import org.joda.time.DateTime;
 import scala.concurrent.duration.FiniteDuration;
 
 public class GatewayData {
-    private final String eui;
     private final transient String airtableID;
-    private String city;
-    private String appEui;
-    private Position position;
-    private FiniteDuration timeout;
-    private DeviceState status;
+    private transient String city;
+    private transient String appEui;
+    private transient FiniteDuration timeout;
 
+    private final String eui;
+    private Position position;
+    private DeviceState status;
     private DateTime lastSeen;
     private double maxObservedRange;
 

@@ -1,18 +1,14 @@
 package no.ntnu.dataport;
 
 import akka.actor.UntypedActor;
+import no.ntnu.dataport.enums.MqttActorState;
 import org.eclipse.paho.client.mqttv3.MqttClient;
+
+import static no.ntnu.dataport.enums.MqttActorState.DISCONNECTED;
 
 public abstract class MqttFSMBase extends UntypedActor {
 
-    /*
-     * This is the mutable state of this state machine.
-     */
-    protected enum State {
-        CONNECTED, CONNECTING, DISCONNECTED;
-    }
-
-    private State state = State.DISCONNECTED;
+    private MqttActorState state = DISCONNECTED;
     private MqttClient mqttClient;
 
     /*
@@ -22,7 +18,7 @@ public abstract class MqttFSMBase extends UntypedActor {
         this.mqttClient = mqttClient;
     }
 
-    protected void setState(State s) {
+    protected void setState(MqttActorState s) {
         if (state != s) {
             transition(state, s);
             state = s;
@@ -36,12 +32,12 @@ public abstract class MqttFSMBase extends UntypedActor {
         return mqttClient;
     }
 
-    protected State getState() {
+    protected MqttActorState getState() {
         return state;
     }
 
     /*
      * And finally the callbacks (only one in this example: react to state change)
      */
-    abstract protected void transition(State old, State next);
+    abstract protected void transition(MqttActorState old, MqttActorState next);
 }

@@ -17,6 +17,9 @@ public class DataportMain {
         Props externalResourceSupervisorProps = Props.create(ExternalResourceSupervisorActor.class);
         final ActorRef externalResourceSupervisor = system.actorOf(externalResourceSupervisorProps, "externalResourceSupervisor");
 
+        Props dbProps = DBActor.props(SecretStuff.INFLUXDB_URL, SecretStuff.INFLUXDB_USERNAME, SecretStuff.INFLUXDB_PASSWORD);
+        final ActorRef db = system.actorOf(dbProps, "influxActor");
+
         // Create a list off the TTN applications we want to monitor
         List<ApplicationParameters> applications = new ArrayList<>();
         applications.add(new ApplicationParameters(

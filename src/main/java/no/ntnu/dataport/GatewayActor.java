@@ -13,6 +13,7 @@ import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import net.gpedro.integrations.slack.SlackApi;
 import net.gpedro.integrations.slack.SlackMessage;
+import no.ntnu.dataport.enums.DeviceState;
 import no.ntnu.dataport.types.*;
 import no.ntnu.dataport.utils.Haversine;
 import no.ntnu.dataport.utils.SecretStuff;

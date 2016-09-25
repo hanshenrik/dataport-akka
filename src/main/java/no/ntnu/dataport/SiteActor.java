@@ -16,6 +16,8 @@ import com.mashape.unirest.http.HttpResponse;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import com.mashape.unirest.http.exceptions.UnirestException;
+import no.ntnu.dataport.enums.DeviceState;
+import no.ntnu.dataport.enums.DeviceType;
 import no.ntnu.dataport.types.*;
 import no.ntnu.dataport.types.Messages.*;
 import no.ntnu.dataport.utils.SecretStuff;

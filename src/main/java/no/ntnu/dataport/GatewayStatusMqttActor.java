@@ -7,7 +7,8 @@ import akka.cluster.pubsub.DistributedPubSubMediator;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
-import no.ntnu.dataport.types.DeviceType;
+import no.ntnu.dataport.enums.MqttActorState;
+import no.ntnu.dataport.enums.DeviceType;
 import no.ntnu.dataport.types.Messages;
 import no.ntnu.dataport.types.NetworkComponent;
 import org.eclipse.paho.client.mqttv3.*;
@@ -78,7 +79,7 @@ public class GatewayStatusMqttActor extends MqttFSMBase implements MqttCallbackE
                 currentDevicesMonitored.add(matcher.group(3));
             }
         }
-        if (getState() == State.CONNECTED) {
+        if (getState() == MqttActorState.CONNECTED) {
             if (message instanceof Messages.NetworkGraphMessage) {
 
                 // Make sure I am subscribing to all components present in the network
@@ -99,12 +100,12 @@ public class GatewayStatusMqttActor extends MqttFSMBase implements MqttCallbackE
     }
 
     @Override
-    protected void transition(State old, State next) {
+    protected void transition(MqttActorState old, MqttActorState next) {
         log.info("Going from {} to {}", old, next);
     }
 
     private void connect() throws MqttException {
-        setState(State.CONNECTING);
+        setState(MqttActorState.CONNECTING);
         getMqttClient().connect(connectionOptions);
         log.info("Connecting to broker: {}", broker);
     }
@@ -112,13 +113,13 @@ public class GatewayStatusMqttActor extends MqttFSMBase implements MqttCallbackE
     /* Paho implementation */
     @Override
     public void connectionLost(Throwable cause) {
-        setState(State.CONNECTING);
+        setState(MqttActorState.CONNECTING);
         log.info("Damn! I lost my MQTT connection. Paho's automatic reconnect with backoff kicking in because of: "+cause.getStackTrace());
     }
 
     @Override
     public void connectComplete(boolean reconnect, String serverURI) {
-        setState(State.CONNECTED);
+        setState(MqttActorState.CONNECTED);
         if (reconnect) {
             log.info("Yeah! I reconnected to my MQTT broker");
         } else {

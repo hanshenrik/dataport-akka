@@ -13,13 +13,13 @@ import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import net.gpedro.integrations.slack.SlackApi;
 import net.gpedro.integrations.slack.SlackMessage;
+import no.ntnu.dataport.enums.DeviceState;
 import no.ntnu.dataport.types.*;
 import no.ntnu.dataport.types.Messages.*;
 import no.ntnu.dataport.utils.SecretStuff;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.codec.binary.Base64;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.joda.time.DateTime;
 import scala.Option;
 import scala.concurrent.duration.FiniteDuration;
 
@@ -70,9 +70,10 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
 
     public void handler(DeviceState from, DeviceState to) {
         if (from != to) {
-            // TODO: instead of doing mediator.tell in all state changes, do it here with a StateChangeMessage or something
             log().info("Going from {} to {}", from, to);
-//            mediator.tell();
+
+            // Tell all interested that I am changing my state
+            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, nextStateData()), self());
         }
     }
 
@@ -96,21 +97,15 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                                 .body(new JsonNode("{fields: {status: " + DeviceState.OK + "}}"))
                                 .asJson().getStatus();
 
-                            StagingObservation stagingObservation = convertToStagingObservation(message);
+                            Observation observation = convertToObservation(message);
 
-                            // TODO: don't use .now(), make JSON message into object before sending internally, add getTimestamp or something
-                            stateData().setLastObservation(convertToObservation(stagingObservation));
-                            stateData().setLastSeen(DateTime.now());
-                            stateData().setBatteryLevel(stagingObservation.getBatteryLevel());
-                            stateData().setCo2(stagingObservation.getCo2());
+                            stateData().setLastObservation(observation);
+                            stateData().setLastSeen(observation.metadata.server_time);
                             stateData().setStatus(DeviceState.OK);
 
                             // Tell the gateway where I am so it can calculate maxObservedRange
-                            context().system().actorSelection("/user/"+stateData().getCity()+"/"+stateData().getLastObservation().gatewayEui)
+                            context().system().actorSelection("/user/"+stateData().getCity()+"/"+stateData().getLastObservation().metadata.gateway_eui)
                                     .tell(stateData().getPosition(), self());
-
-                            // Tell all interested that I am changing my state
-                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
 
                             // Publish my reception to all interested
                             mediator.tell(new DistributedPubSubMediator.Publish(internalReceptionPublishTopic, stateData().getLastObservation()), self());
@@ -136,25 +131,17 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
 
                             stateData().setStatus(DeviceState.UNKNOWN);
 
-                            // Tell all interested that I am changing my state
-                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
-
                             return goTo(DeviceState.UNKNOWN).using(stateData());
                         }).event(MqttMessage.class,
                         (message, data) -> {
-                            StagingObservation stagingObservation = convertToStagingObservation(message);
+                            Observation observation = convertToObservation(message);
 
-                            stateData().setLastObservation(convertToObservation(stagingObservation));
-                            stateData().setLastSeen(DateTime.now());
-                            stateData().setBatteryLevel(stagingObservation.getBatteryLevel());
-                            stateData().setCo2(stagingObservation.getCo2());
+                            stateData().setLastObservation(observation);
+                            stateData().setLastSeen(observation.metadata.server_time);
 
                             // Tell the gateway where I am so it can calculate maxObservedRange
-                            context().system().actorSelection("/user/"+stateData().getCity()+"/"+stateData().getLastObservation().gatewayEui)
+                            context().system().actorSelection("/user/"+stateData().getCity()+"/"+stateData().getLastObservation().metadata.gateway_eui)
                                     .tell(stateData().getPosition(), self());
-
-                            // Tell all interested that I am changing my state
-                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
 
                             // Publish my reception to all interested
                             mediator.tell(new DistributedPubSubMediator.Publish(internalReceptionPublishTopic, stateData().getLastObservation()), self());
@@ -180,10 +167,10 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
         return Integer.parseInt(hex, 16);
     }
 
-    private StagingObservation convertToStagingObservation(MqttMessage message) {
-        StagingObservation stagingObservation = gson.fromJson(new String(message.getPayload()), StagingObservation.class);
+    private Observation convertToObservation(MqttMessage message) {
+        CTT2Observation CTT2Observation = gson.fromJson(new String(message.getPayload()), CTT2Observation.class);
 
-        String payloadBase64 = stagingObservation.payload;
+        String payloadBase64 = CTT2Observation.payload;
         byte[] payloadBytes = Base64.decodeBase64(payloadBase64);
         String payloadHexWithHeader = Hex.encodeHexString(payloadBytes);
         String payloadHexOnlyData = payloadHexWithHeader.substring(36); // Skip the header
@@ -193,37 +180,19 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
         float hum = hex8BytesToFloat(payloadHexOnlyData.substring(32, 40));
         float pres = hex8BytesToFloat(payloadHexOnlyData.substring(42, 50));
         int bat;
+
+        Data data;
         if (payloadHexOnlyData.length() > 55) {
             float pm1 = hex8BytesToFloat(payloadHexOnlyData.substring(52, 60));
             float pm2 = hex8BytesToFloat(payloadHexOnlyData.substring(62, 70));
             float pm10 = hex8BytesToFloat(payloadHexOnlyData.substring(72, 80));
             bat = hex2BytesToInt(payloadHexOnlyData.substring(82, 84));
-            stagingObservation.setPm1(pm1);
-            stagingObservation.setPm2(pm2);
-            stagingObservation.setPm10(pm10);
+            data = new Data(co2, no2, temp, hum, pres, pm1, pm2, pm10, bat);
         }
         else {
             bat = hex2BytesToInt(payloadHexOnlyData.substring(52, 54));
+            data = new Data(co2, no2, temp, hum, pres, bat);
         }
-
-        stagingObservation.setCo2(co2);
-        stagingObservation.setNo2(no2);
-        stagingObservation.setTemperature(temp);
-        stagingObservation.setHumidity(hum);
-        stagingObservation.setPreassure(pres);
-        stagingObservation.setBatteryLevel(bat);
-        return stagingObservation;
-    }
-
-    private Observation convertToObservation(StagingObservation so) {
-        return new Observation(
-                so.dev_eui,
-                so.metadata.get(0).gateway_eui,
-                DateTime.now(),
-                so.metadata.get(0).frequency,
-                so.metadata.get(0).datarate,
-                so.metadata.get(0).rssi,
-                so.metadata.get(0).lsnr, // TODO: is lsnr and snr the same?
-                so.payload);
+        return new Observation(CTT2Observation.dev_eui, CTT2Observation.metadata.get(0), data);
     }
 }

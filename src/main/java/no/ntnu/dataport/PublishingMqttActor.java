@@ -10,6 +10,7 @@ import akka.japi.Creator;
 import com.fatboyindustrial.gsonjodatime.Converters;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import no.ntnu.dataport.enums.MqttActorState;
 import no.ntnu.dataport.types.GatewayData;
 import no.ntnu.dataport.types.Messages.*;
 import no.ntnu.dataport.types.NetworkComponent;
@@ -84,7 +85,7 @@ public class PublishingMqttActor extends MqttFSMBase implements MqttCallbackExte
     @Override
     public void onReceive(Object message) throws MqttException {
 //        log.info("Got: {} from {}", message, getSender());
-        if (getState() == State.CONNECTED) {
+        if (getState() == MqttActorState.CONNECTED) {
             if (message instanceof Observation) {
                 String topic = "dataport/site/" + sender().path().parent().name() + "/sensor/" + sender().path().name() + "/events/reception";
                 MqttMessage mqttMessage = new MqttMessage(gson.toJson(message).getBytes());
@@ -156,12 +157,12 @@ public class PublishingMqttActor extends MqttFSMBase implements MqttCallbackExte
     }
 
     @Override
-    protected void transition(State old, State next) {
+    protected void transition(MqttActorState old, MqttActorState next) {
         log.info("Going from {} to {}", old, next);
     }
 
     private void connect() throws MqttException {
-        setState(State.CONNECTING);
+        setState(MqttActorState.CONNECTING);
         getMqttClient().connect(connectionOptions);
 
         log.info("Connecting to broker: {}", broker);
@@ -169,7 +170,7 @@ public class PublishingMqttActor extends MqttFSMBase implements MqttCallbackExte
 
     @Override
     public void connectionLost(Throwable cause) {
-        setState(State.CONNECTING);
+        setState(MqttActorState.CONNECTING);
 
         mediator.tell(new DistributedPubSubMediator.Unsubscribe(siteGraphsTopic, self()), self());
 
@@ -178,7 +179,7 @@ public class PublishingMqttActor extends MqttFSMBase implements MqttCallbackExte
 
     @Override
     public void connectComplete(boolean reconnect, String serverURI) {
-        setState(State.CONNECTED);
+        setState(MqttActorState.CONNECTED);
         if (reconnect) {
             log.info("Yeah! I reconnected to my MQTT broker");
         } else {
