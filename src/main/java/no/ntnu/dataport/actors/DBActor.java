@@ -46,6 +46,7 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
     private  String dbName;
     private InfluxDB influxDB;
     public String siteGraphsTopic;
+    public String forecastTopic;
     public Set<String> currentDevicesMonitored;
 
     public DBActor(String url, String username, String password) {
@@ -54,6 +55,7 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
         this.password = password;
         this.dbName = "ctt";
         this.siteGraphsTopic = "dataport/site/graphs";
+        this.forecastTopic = "dataport/forecast";
         this.currentDevicesMonitored = new HashSet<>();
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.influxDB = InfluxDBFactory.connect(url, username, password);
@@ -86,6 +88,7 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
         when(DBActorState.UNINITIALIZED,
                 matchEvent(InfluxDB.class, (event, data) -> {
                     mediator.tell(new DistributedPubSubMediator.Subscribe(siteGraphsTopic, self()), self());
+                    mediator.tell(new DistributedPubSubMediator.Subscribe(forecastTopic, self()), self());
                     return goTo(DBActorState.INITIALIZED);
                 }));
 
@@ -116,6 +119,26 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
                                     .addField("rssi", observation.metadata.rssi)
                                     .addField("frequency", observation.metadata.frequency)
                                     .build();
+
+                            // TODO: write to influxDB when available
+//                            influxDB.write(dbName, "autogen", point);
+                            return stay(); }
+                ).event(Messages.ForecastMessage.class,
+                        (forecast, data) -> {
+                            Point point = Point.measurement("forecast")
+                                    .time(forecast.timestamp.getMillis(), TimeUnit.MILLISECONDS)
+                                    .addField("temperature", forecast.temperature)
+                                    .addField("precipitation", forecast.precipitation)
+                                    .addField("cloudiness", forecast.cloudiness)
+                                    .addField("daylightInMillis", forecast.daylightInMillis)
+                                    .build();
+
+                            log().info("Got daily points from YR: "+point.toString());
+
+                            // TODO: might be point with timestamp already existing. Chech whether it is overwritten or
+                            // added as new entry: https://github.com/influxdata/influxdb/issues/391. We would like it
+                            // to be overwritten as this is probably a better prediction since its made later.
+
                             // TODO: write to influxDB when available
 //                            influxDB.write(dbName, "autogen", point);
                             return stay();
