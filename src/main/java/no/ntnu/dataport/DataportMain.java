@@ -4,6 +4,7 @@ import akka.actor.*;
 import no.ntnu.dataport.actors.DBActor;
 import no.ntnu.dataport.actors.ExternalResourceSupervisorActor;
 import no.ntnu.dataport.actors.SiteActor;
+import no.ntnu.dataport.actors.WeatherDataActor;
 import no.ntnu.dataport.types.ApplicationParameters;
 import no.ntnu.dataport.types.Messages;
 import no.ntnu.dataport.types.Position;
@@ -22,6 +23,9 @@ public class DataportMain {
 
         Props dbProps = DBActor.props(SecretStuff.INFLUXDB_URL, SecretStuff.INFLUXDB_USERNAME, SecretStuff.INFLUXDB_PASSWORD);
         final ActorRef db = system.actorOf(dbProps, "influxActor");
+
+        Props weatherDataProps = WeatherDataActor.props();
+        final ActorRef weatherData = system.actorOf(weatherDataProps, "weatherData");
 
         // Create a list off the TTN applications we want to monitor
         List<ApplicationParameters> applications = new ArrayList<>();
