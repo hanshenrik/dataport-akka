@@ -58,14 +58,13 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
 
         setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
+        // Tell the mediator I am interested in all MQTT messages sent from my digital twin
         mediator.tell(new DistributedPubSubMediator.Subscribe(receiveStatusTopic, self()), self());
     }
 
     public void handler(DeviceState from, DeviceState to) {
         if (from != to) {
-            // TODO: instead of doing mediator.tell in all state changes, do it here with a StateChangeMessage or something
             log().info("Going from {} to {}", from, to);
-//            mediator.tell();
         }
     }
 
@@ -81,6 +80,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                 matchEvent(MqttMessage.class,
                         (message, data) ->
                         {
+                            // Update Airtable
                             Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
                                 .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
                                 .header("Content-Type", "application/json")
@@ -88,25 +88,24 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                                 .body(new JsonNode("{fields: {status: " + DeviceState.OK + "}}"))
                                 .asJson();
 
-                            // TODO: don't use .now(), make JSON message into object before sending internally, add getTimestamp or something
                             stateData().setLastSeen(DateTime.now());
                             stateData().setStatus(DeviceState.OK);
 
-                            // Tell all interested that I am changing my state
+                            // Publish my status to all interested to show I am alive
                             mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
 
                             return goTo(DeviceState.OK).using(stateData());
                         }
                 ).event(Position.class,
                         (message, data) -> {
-                            log().debug("New observation received at gateway!");
-                            double distance = (int) Haversine.distance(message, stateData().getPosition());
-                            log().debug("Distance calculated to be: {}", distance);
+                            // Calculate distance to sensor sending observation
+                            int distance = (int) Haversine.distance(message, stateData().getPosition());
 
                             stateData().setMaxObservedRange(distance);
                             stateData().setLastSeen(DateTime.now());
                             stateData().setStatus(DeviceState.OK);
 
+                            // Publish my status to all interested to show I am alive
                             mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
 
                             return goTo(DeviceState.OK).using(stateData());
@@ -116,6 +115,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
         when(DeviceState.OK, null, // timeout duration is set in the constructor
                 matchEventEquals(StateTimeout(),
                         (event, data) -> {
+                            // Update Airtable
                             Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
                                 .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
                                 .header("Content-Type", "application/json")
@@ -123,36 +123,45 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                                 .body(new JsonNode("{fields: {status: " + DeviceState.UNKNOWN + "}}"))
                                 .asJson();
 
+                            // Update my state
+                            stateData().setStatus(DeviceState.UNKNOWN);
+
+                            // Send alert to Slack
                             SlackApi api = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
                             api.call(new SlackMessage("Timeout! Gateway "+data.getEui()+" in "+data.getCity() + " has been inactive for "+stateData().getTimeout()));
 
-                            stateData().setStatus(DeviceState.UNKNOWN);
-
+                            // Publish my status to all interested to show I timed out
                             mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
 
                             return goTo(DeviceState.UNKNOWN);
                         }).event(MqttMessage.class,
                         (message, data) -> {
-                            log().debug("Got data in expected time, staying in OK state");
-
                             stateData().setLastSeen(DateTime.now());
 
+                            // Publish my status to all interested to show I am alive
                             mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
 
                             return stay().using(stateData());
                         }).event(Position.class,
                         (message, data) -> {
-                            log().debug("New observation from position {} sent to gateway!", message);
-                            double distance = (int) Haversine.distance(message, stateData().getPosition());
-                            log().debug("Distance calculated to be: {}", distance);
+                            // Calculate distance to sensor sending observation
+                            int distance = (int) Haversine.distance(message, stateData().getPosition());
 
+                            // Update my state
                             stateData().setMaxObservedRange(distance);
                             stateData().setLastSeen(DateTime.now());
 
+                            // Publish my status to all interested to show I got a reception message
                             mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
 
                             return stay();
                         }));
+
+        whenUnhandled(
+                matchAnyEvent((event, data) -> {
+                    log().warning("Unable to handle {} in state {}, but I'll continue as normal.", event, stateName());
+                    return stay();
+                }));
 
         onTransition(this::handler);
 

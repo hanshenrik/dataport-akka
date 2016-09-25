@@ -14,7 +14,7 @@ public class GatewayData {
     private Position position;
     private DeviceState status;
     private DateTime lastSeen;
-    private double maxObservedRange;
+    private int maxObservedRange;
 
     public GatewayData(String eui, String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
         this.eui = eui;
@@ -30,11 +30,11 @@ public class GatewayData {
         return airtableID;
     }
 
-    public double getMaxObservedRange() {
+    public int getMaxObservedRange() {
         return maxObservedRange;
     }
 
-    public void setMaxObservedRange(double maxObservedRange) {
+    public void setMaxObservedRange(int maxObservedRange) {
         if (maxObservedRange > this.maxObservedRange) {
             this.maxObservedRange = maxObservedRange;
         }

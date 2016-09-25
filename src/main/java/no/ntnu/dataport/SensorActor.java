@@ -26,6 +26,8 @@ import scala.concurrent.duration.FiniteDuration;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
+import static no.ntnu.dataport.utils.ConvertUtils.convertToObservation;
+
 
 public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
 
@@ -49,7 +51,6 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
 
     SensorData initialData;
     ActorRef mediator;
-    Gson gson;
     String externalReceiveTopic;
     String internalStatusPublishTopic;
     String internalReceptionPublishTopic;
@@ -57,7 +58,6 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
     public SensorActor(final String eui, final String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
         this.initialData = new SensorData(eui, airtableID, appEui, city, position, timeout);
         this.mediator = DistributedPubSub.get(context().system()).mediator();
-        this.gson = Converters.registerDateTime(new GsonBuilder()).create();
         this.externalReceiveTopic = "external/" + appEui + "/devices/" + eui + "/up";
         this.internalStatusPublishTopic = "dataport/site/" + city + "/sensor/" + eui + "/events/status";
         this.internalReceptionPublishTopic = "dataport/site/" + city + "/sensor/" + eui + "/events/reception";
@@ -71,9 +71,6 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
     public void handler(DeviceState from, DeviceState to) {
         if (from != to) {
             log().info("Going from {} to {}", from, to);
-
-            // Tell all interested that I am changing my state
-            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, nextStateData()), self());
         }
     }
 
@@ -95,10 +92,12 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                                 .header("Content-Type", "application/json")
                                 .header("accept", "application/json")
                                 .body(new JsonNode("{fields: {status: " + DeviceState.OK + "}}"))
-                                .asJson().getStatus();
+                                .asJson();
 
+                            // Create an Observation object
                             Observation observation = convertToObservation(message);
 
+                            // Update my state
                             stateData().setLastObservation(observation);
                             stateData().setLastSeen(observation.metadata.server_time);
                             stateData().setStatus(DeviceState.OK);
@@ -110,6 +109,9 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                             // Publish my reception to all interested
                             mediator.tell(new DistributedPubSubMediator.Publish(internalReceptionPublishTopic, stateData().getLastObservation()), self());
 
+                            // Publish my status to all interested to show I am alive
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
+
                             return goTo(DeviceState.OK).using(stateData());
                         }
                 ).event(DistributedPubSubMediator.SubscribeAck.class,
@@ -119,6 +121,10 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
         when(DeviceState.OK, null, // timeout duration is set in the constructor
                 matchEventEquals(StateTimeout(),
                         (event, data) -> {
+                            // Update my state
+                            stateData().setStatus(DeviceState.UNKNOWN);
+
+                            // Update the Airtable
                             Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
                                 .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
                                 .header("Content-Type", "application/json")
@@ -126,16 +132,19 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                                 .body(new JsonNode("{fields: {status: " + DeviceState.UNKNOWN + "}}"))
                                 .asJson();
 
+                            // Send alert to Slack
                             SlackApi api = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
                             api.call(new SlackMessage("Timeout! Sensor "+data.getEui()+" in "+data.getCity() + " has been inactive for "+stateData().getTimeout()));
 
-                            stateData().setStatus(DeviceState.UNKNOWN);
+                            // Publish my status to all interested to show I timed out
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
 
                             return goTo(DeviceState.UNKNOWN).using(stateData());
                         }).event(MqttMessage.class,
                         (message, data) -> {
                             Observation observation = convertToObservation(message);
 
+                            // Update my state
                             stateData().setLastObservation(observation);
                             stateData().setLastSeen(observation.metadata.server_time);
 
@@ -146,53 +155,20 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                             // Publish my reception to all interested
                             mediator.tell(new DistributedPubSubMediator.Publish(internalReceptionPublishTopic, stateData().getLastObservation()), self());
 
+                            // Publish my status to all interested to show I am alive
+                            mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());
+
                             return stay().using(stateData());
                         }));
+
+        whenUnhandled(
+                matchAnyEvent((event, data) -> {
+                    log().warning("Unable to handle {} in state {}, but I'll continue as normal.", event, stateName());
+                    return stay();
+                }));
 
         onTransition(this::handler);
 
         initialize();
-    }
-
-    private float hex8BytesToFloat(String hex) {
-        Long value = Long.parseLong(hex, 16);
-        ByteBuffer buffer = ByteBuffer.allocate(8);
-        buffer.order(ByteOrder.LITTLE_ENDIAN);
-        buffer.asLongBuffer().put(value);
-        buffer.order(ByteOrder.BIG_ENDIAN);
-        return buffer.asFloatBuffer().get();
-    }
-
-    private int hex2BytesToInt(String hex) {
-        return Integer.parseInt(hex, 16);
-    }
-
-    private Observation convertToObservation(MqttMessage message) {
-        CTT2Observation CTT2Observation = gson.fromJson(new String(message.getPayload()), CTT2Observation.class);
-
-        String payloadBase64 = CTT2Observation.payload;
-        byte[] payloadBytes = Base64.decodeBase64(payloadBase64);
-        String payloadHexWithHeader = Hex.encodeHexString(payloadBytes);
-        String payloadHexOnlyData = payloadHexWithHeader.substring(36); // Skip the header
-        float co2 = hex8BytesToFloat(payloadHexOnlyData.substring(2, 10));
-        float no2 = hex8BytesToFloat(payloadHexOnlyData.substring(12, 20));
-        float temp = hex8BytesToFloat(payloadHexOnlyData.substring(22, 30));
-        float hum = hex8BytesToFloat(payloadHexOnlyData.substring(32, 40));
-        float pres = hex8BytesToFloat(payloadHexOnlyData.substring(42, 50));
-        int bat;
-
-        Data data;
-        if (payloadHexOnlyData.length() > 55) {
-            float pm1 = hex8BytesToFloat(payloadHexOnlyData.substring(52, 60));
-            float pm2 = hex8BytesToFloat(payloadHexOnlyData.substring(62, 70));
-            float pm10 = hex8BytesToFloat(payloadHexOnlyData.substring(72, 80));
-            bat = hex2BytesToInt(payloadHexOnlyData.substring(82, 84));
-            data = new Data(co2, no2, temp, hum, pres, pm1, pm2, pm10, bat);
-        }
-        else {
-            bat = hex2BytesToInt(payloadHexOnlyData.substring(52, 54));
-            data = new Data(co2, no2, temp, hum, pres, bat);
-        }
-        return new Observation(CTT2Observation.dev_eui, CTT2Observation.metadata.get(0), data);
     }
 }
