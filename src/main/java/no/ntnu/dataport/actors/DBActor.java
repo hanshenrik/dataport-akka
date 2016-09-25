@@ -1,4 +1,4 @@
-package no.ntnu.dataport;
+package no.ntnu.dataport.actors;
 
 import akka.actor.AbstractFSM;
 import akka.actor.ActorRef;

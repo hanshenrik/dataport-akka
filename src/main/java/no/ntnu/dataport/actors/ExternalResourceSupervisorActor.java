@@ -1,4 +1,4 @@
-package no.ntnu.dataport;
+package no.ntnu.dataport.actors;
 
 import akka.actor.*;
 import akka.event.Logging;
@@ -62,7 +62,7 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
         final Props dataportBrokerSupervisorProps = BackoffSupervisor.props(dataportBrokerBackoffOptions);
         final Props ttnGatewayStatusBrokerSupervisorProps = BackoffSupervisor.props(ttnGatewayStatusBrokerBackoffOptions);
 
-        getContext().actorOf(dataportBrokerSupervisorProps, "dataportBrokerSupervisor");
+//        getContext().actorOf(dataportBrokerSupervisorProps, "dataportBrokerSupervisor");
         getContext().actorOf(ttnGatewayStatusBrokerSupervisorProps, "ttnGatewayStatusBrokerSupervisor");
     }
 

@@ -1,6 +1,9 @@
 package no.ntnu.dataport;
 
 import akka.actor.*;
+import no.ntnu.dataport.actors.DBActor;
+import no.ntnu.dataport.actors.ExternalResourceSupervisorActor;
+import no.ntnu.dataport.actors.SiteActor;
 import no.ntnu.dataport.types.ApplicationParameters;
 import no.ntnu.dataport.types.Messages;
 import no.ntnu.dataport.types.Position;

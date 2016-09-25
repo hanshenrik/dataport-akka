@@ -1,4 +1,4 @@
-package no.ntnu.dataport;
+package no.ntnu.dataport.actors;
 
 import akka.actor.ActorRef;
 import akka.actor.Props;
@@ -51,6 +51,7 @@ public class PublishingMqttActor extends MqttFSMBase implements MqttCallbackExte
     final String username;
     final String password;
     final String siteGraphsTopic;
+    final String systemStatusTopic;
     final MqttConnectOptions connectionOptions;
     Set<String> currentDevicesMonitored;
 
@@ -60,6 +61,7 @@ public class PublishingMqttActor extends MqttFSMBase implements MqttCallbackExte
         this.password   = password;
         this.connectionOptions = new MqttConnectOptions();
         this.siteGraphsTopic = "dataport/site/graphs";
+        this.systemStatusTopic = "dataport/system/status";
         this.currentDevicesMonitored = new HashSet<>();
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
         MqttClientPersistence persistence = new MemoryPersistence();
@@ -187,6 +189,7 @@ public class PublishingMqttActor extends MqttFSMBase implements MqttCallbackExte
         }
 
         mediator.tell(new DistributedPubSubMediator.Subscribe(siteGraphsTopic, self()), self());
+        mediator.tell(new DistributedPubSubMediator.Subscribe(systemStatusTopic, self()), self());
     }
 
     @Override
