@@ -197,7 +197,7 @@ public class PublishingMqttActor extends MqttFSMBase implements MqttCallbackExte
 
         mediator.tell(new DistributedPubSubMediator.Unsubscribe(siteGraphsTopic, self()), self());
 
-        log.info("Damn! I lost my MQTT connection. Paho's automatic reconnect with backoff kicking in because of: "+cause.getStackTrace());
+        log.error("Damn! I lost my MQTT connection. Paho's automatic reconnect with backoff kicking in because of: "+cause.getStackTrace());
 
         // Send alert to Slack
         slackAPI.call(slackConnectionLostMessage);

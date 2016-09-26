@@ -134,7 +134,7 @@ public class GatewayStatusMqttActor extends MqttFSMBase implements MqttCallbackE
     @Override
     public void connectionLost(Throwable cause) {
         setState(MqttActorState.CONNECTING);
-        log.info("Damn! I lost my MQTT connection. Paho's automatic reconnect with backoff kicking in because of: "+cause.getStackTrace());
+        log.error("Damn! I lost my MQTT connection. Paho's automatic reconnect with backoff kicking in because of: "+cause.getStackTrace());
 
         // Send alert to Slack
         slackAPI.call(slackConnectionLostMessage);
