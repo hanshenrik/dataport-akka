@@ -6,7 +6,6 @@ import scala.concurrent.duration.FiniteDuration;
 
 
 public class SensorData {
-    private final transient String airtableID;
     private transient String city;
     private transient String appEui;
     private transient FiniteDuration timeout;
@@ -17,19 +16,14 @@ public class SensorData {
     private DateTime lastSeen;
     private Messages.Observation lastObservation;
 
-    public SensorData(String eui, String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
+    public SensorData(String eui, String appEui, String city, Position position, FiniteDuration timeout) {
         this.eui = eui;
-        this.airtableID = airtableID;
         this.appEui = appEui;
         this.city = city;
         this.position = position;
         this.timeout = timeout;
 
         this.status = DeviceState.UNKNOWN;
-    }
-
-    public String getAirtableID() {
-        return airtableID;
     }
 
     public DeviceState getStatus() {

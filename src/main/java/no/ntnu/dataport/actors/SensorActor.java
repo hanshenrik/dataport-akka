@@ -8,6 +8,7 @@ import akka.cluster.pubsub.DistributedPubSubMediator;
 import akka.japi.Creator;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
+import com.mashape.unirest.http.exceptions.UnirestException;
 import net.gpedro.integrations.slack.SlackApi;
 import net.gpedro.integrations.slack.SlackAttachment;
 import net.gpedro.integrations.slack.SlackMessage;
@@ -51,14 +52,16 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
     String externalReceiveTopic;
     String internalStatusPublishTopic;
     String internalReceptionPublishTopic;
+    String airtableRecordURL;
     SlackApi slackAPI;
 
     public SensorActor(final String eui, final String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
-        this.initialData = new SensorData(eui, airtableID, appEui, city, position, timeout);
+        this.initialData = new SensorData(eui, appEui, city, position, timeout);
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.externalReceiveTopic = "external/" + appEui + "/devices/" + eui + "/up";
         this.internalStatusPublishTopic = "dataport/site/" + city + "/sensor/" + eui + "/events/status";
         this.internalReceptionPublishTopic = "dataport/site/" + city + "/sensor/" + eui + "/events/reception";
+        this.airtableRecordURL = "https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + city + "/" + airtableID;
 
         this.slackAPI = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
 
@@ -71,6 +74,21 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
     public void handler(DeviceState from, DeviceState to) {
         if (from != to) {
             log().info("Going from {} to {}", from, to);
+
+            // Update Airtable if I'm initialized
+            if (to != DeviceState.UNINITIALIZED) {
+                try {
+                    Unirest.patch(airtableRecordURL)
+                            .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
+                            .header("Content-Type", "application/json")
+                            .header("accept", "application/json")
+                            .body(new JsonNode("{fields: {status: " + to + "}}"))
+                            .asJson();
+                }
+                catch (UnirestException ue) {
+                    log().warning("Unable to update status in Airtable.");
+                }
+            }
         }
     }
 
@@ -86,14 +104,6 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                 matchEvent(MqttMessage.class,
                         (message, data) ->
                         {
-                            // Update the Airtable
-                            Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
-                                .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
-                                .header("Content-Type", "application/json")
-                                .header("accept", "application/json")
-                                .body(new JsonNode("{fields: {status: " + DeviceState.OK + "}}"))
-                                .asJson();
-
                             // Create an Observation object
                             Observation observation = convertToObservation(message);
 
@@ -123,14 +133,6 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                         (event, data) -> {
                             // Update my state
                             stateData().setStatus(DeviceState.UNKNOWN);
-
-                            // Update the Airtable
-                            Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
-                                .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
-                                .header("Content-Type", "application/json")
-                                .header("accept", "application/json")
-                                .body(new JsonNode("{fields: {status: " + DeviceState.UNKNOWN + "}}"))
-                                .asJson();
 
                             // Send alert to Slack
                             slackAPI.call(new SlackMessage("").addAttachments(new SlackAttachment()

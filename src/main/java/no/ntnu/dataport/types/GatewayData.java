@@ -5,7 +5,6 @@ import org.joda.time.DateTime;
 import scala.concurrent.duration.FiniteDuration;
 
 public class GatewayData {
-    private final transient String airtableID;
     private transient String city;
     private transient String appEui;
     private transient FiniteDuration timeout;
@@ -16,18 +15,13 @@ public class GatewayData {
     private DateTime lastSeen;
     private int maxObservedRange;
 
-    public GatewayData(String eui, String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
+    public GatewayData(String eui, String appEui, String city, Position position, FiniteDuration timeout) {
         this.eui = eui;
-        this.airtableID = airtableID;
         this.appEui = appEui;
         this.city = city;
         this.position = position;
         this.timeout = timeout;
         this.maxObservedRange = 0;
-    }
-
-    public String getAirtableID() {
-        return airtableID;
     }
 
     public int getMaxObservedRange() {

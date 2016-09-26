@@ -11,6 +11,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
+import com.mashape.unirest.http.exceptions.UnirestException;
 import net.gpedro.integrations.slack.SlackApi;
 import net.gpedro.integrations.slack.SlackAttachment;
 import net.gpedro.integrations.slack.SlackMessage;
@@ -51,17 +52,19 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
     ActorRef mediator;
     String internalStatusPublishTopic;
     String receiveStatusTopic;
+    String airtableRecordURL;
     Gson gson;
     SlackApi slackAPI;
 
     public GatewayActor(final String eui, final String airtableID, String appEui, String city, Position position,
                         FiniteDuration timeout) {
-        this.initialData = new GatewayData(eui, airtableID, appEui, city, position, timeout);
+        this.initialData = new GatewayData(eui, appEui, city, position, timeout);
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
         this.internalStatusPublishTopic = "dataport/site/" + city + "/gateway/" + eui + "/events/status";
         this.receiveStatusTopic = "external/gateways/" + eui + "/status";
         this.slackAPI = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
+        this.airtableRecordURL = "https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + city + "/" + airtableID;
 
         setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
@@ -72,6 +75,21 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
     public void handler(DeviceState from, DeviceState to) {
         if (from != to) {
             log().info("Going from {} to {}", from, to);
+
+            // Update Airtable if I'm initialized
+            if (to != DeviceState.UNINITIALIZED) {
+                try {
+                    Unirest.patch(airtableRecordURL)
+                            .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
+                            .header("Content-Type", "application/json")
+                            .header("accept", "application/json")
+                            .body(new JsonNode("{fields: {status: " + to + "}}"))
+                            .asJson();
+                }
+                catch (UnirestException ue) {
+                    log().warning("Unable to update status in Airtable.");
+                }
+            }
         }
     }
 
@@ -87,14 +105,6 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                 matchEvent(MqttMessage.class,
                         (message, data) ->
                         {
-                            // Update Airtable
-                            Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
-                                .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
-                                .header("Content-Type", "application/json")
-                                .header("accept", "application/json")
-                                .body(new JsonNode("{fields: {status: " + DeviceState.OK + "}}"))
-                                .asJson();
-
                             stateData().setLastSeen(DateTime.now());
                             stateData().setStatus(DeviceState.OK);
 
@@ -122,14 +132,6 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
         when(DeviceState.OK, null, // timeout duration is set in the constructor
                 matchEventEquals(StateTimeout(),
                         (event, data) -> {
-                            // Update Airtable
-                            Unirest.patch("https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + stateData().getCity() + "/" + stateData().getAirtableID())
-                                .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
-                                .header("Content-Type", "application/json")
-                                .header("accept", "application/json")
-                                .body(new JsonNode("{fields: {status: " + DeviceState.UNKNOWN + "}}"))
-                                .asJson();
-
                             // Update my state
                             stateData().setStatus(DeviceState.UNKNOWN);
 
