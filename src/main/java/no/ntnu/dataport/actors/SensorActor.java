@@ -9,6 +9,7 @@ import akka.japi.Creator;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import net.gpedro.integrations.slack.SlackApi;
+import net.gpedro.integrations.slack.SlackAttachment;
 import net.gpedro.integrations.slack.SlackMessage;
 import no.ntnu.dataport.enums.DeviceState;
 import no.ntnu.dataport.types.*;
@@ -50,6 +51,7 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
     String externalReceiveTopic;
     String internalStatusPublishTopic;
     String internalReceptionPublishTopic;
+    SlackApi slackAPI;
 
     public SensorActor(final String eui, final String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
         this.initialData = new SensorData(eui, airtableID, appEui, city, position, timeout);
@@ -57,6 +59,8 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
         this.externalReceiveTopic = "external/" + appEui + "/devices/" + eui + "/up";
         this.internalStatusPublishTopic = "dataport/site/" + city + "/sensor/" + eui + "/events/status";
         this.internalReceptionPublishTopic = "dataport/site/" + city + "/sensor/" + eui + "/events/reception";
+
+        this.slackAPI = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
 
         setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
@@ -129,8 +133,11 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
                                 .asJson();
 
                             // Send alert to Slack
-                            SlackApi api = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
-                            api.call(new SlackMessage("Timeout! Sensor "+data.getEui()+" in "+data.getCity() + " has been inactive for "+stateData().getTimeout()));
+                            slackAPI.call(new SlackMessage("").addAttachments(new SlackAttachment()
+                                    .setFallback("Sensor timeout! Sensor " + data.getEui() + " in "+data.getCity() + " has been inactive for " + stateData().getTimeout())
+                                    .setTitle("Sensor timeout!")
+                                    .setText("Sensor " + data.getEui() + " in " + data.getCity() + " has been inactive for " + stateData().getTimeout())
+                                    .setColor("warning")));
 
                             // Publish my status to all interested to show I timed out
                             mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());

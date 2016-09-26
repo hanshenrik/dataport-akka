@@ -12,6 +12,7 @@ import com.google.gson.GsonBuilder;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import net.gpedro.integrations.slack.SlackApi;
+import net.gpedro.integrations.slack.SlackAttachment;
 import net.gpedro.integrations.slack.SlackMessage;
 import no.ntnu.dataport.enums.DeviceState;
 import no.ntnu.dataport.types.*;
@@ -51,6 +52,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
     String internalStatusPublishTopic;
     String receiveStatusTopic;
     Gson gson;
+    SlackApi slackAPI;
 
     public GatewayActor(final String eui, final String airtableID, String appEui, String city, Position position,
                         FiniteDuration timeout) {
@@ -59,6 +61,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
         this.internalStatusPublishTopic = "dataport/site/" + city + "/gateway/" + eui + "/events/status";
         this.receiveStatusTopic = "external/gateways/" + eui + "/status";
+        this.slackAPI = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
 
         setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
@@ -131,8 +134,11 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
                             stateData().setStatus(DeviceState.UNKNOWN);
 
                             // Send alert to Slack
-                            SlackApi api = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
-                            api.call(new SlackMessage("Timeout! Gateway "+data.getEui()+" in "+data.getCity() + " has been inactive for "+stateData().getTimeout()));
+                            slackAPI.call(new SlackMessage("").addAttachments(new SlackAttachment()
+                                    .setFallback("Gateway timeout! Gateway " + data.getEui() + " in " + data.getCity() + " has been inactive for " + stateData().getTimeout())
+                                    .setTitle("Gateway timeout!")
+                                    .setText("Gateway " + data.getEui() + " in " + data.getCity() + " has been inactive for " + stateData().getTimeout())
+                                    .setColor("warning")));
 
                             // Publish my status to all interested to show I timed out
                             mediator.tell(new DistributedPubSubMediator.Publish(internalStatusPublishTopic, stateData()), self());

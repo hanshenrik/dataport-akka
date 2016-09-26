@@ -7,10 +7,14 @@ import akka.cluster.pubsub.DistributedPubSubMediator;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
+import net.gpedro.integrations.slack.SlackApi;
+import net.gpedro.integrations.slack.SlackAttachment;
+import net.gpedro.integrations.slack.SlackMessage;
 import no.ntnu.dataport.enums.MqttActorState;
 import no.ntnu.dataport.enums.DeviceType;
 import no.ntnu.dataport.types.Messages;
 import no.ntnu.dataport.types.NetworkComponent;
+import no.ntnu.dataport.utils.SecretStuff;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
@@ -46,13 +50,29 @@ public class GatewayStatusMqttActor extends MqttFSMBase implements MqttCallbackE
     final String broker;
     final String siteGraphsTopic;
     final MqttConnectOptions connectionOptions;
+    final SlackApi slackAPI;
+    final SlackMessage slackConnectionLostMessage;
+    final SlackMessage slackReconnectedMessage;
     Set<String> currentDevicesMonitored;
 
     public GatewayStatusMqttActor(String broker) throws MqttException {
         this.broker = broker;
         this.currentDevicesMonitored = new HashSet<>();
         this.siteGraphsTopic = "dataport/site/graphs";
+
+        this.slackAPI = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
+        this.slackConnectionLostMessage = new SlackMessage("").addAttachments(new SlackAttachment()
+                .setFallback("Lost connection to MQTT broker " + broker + ". I'll let you know when its back up.")
+                .setTitle("Lost connection to MQTT broker " + broker)
+                .setText("I'll let you know when its back up.")
+                .setColor("danger"));
+        this.slackReconnectedMessage = new SlackMessage("").addAttachments(new SlackAttachment()
+                .setFallback("Reconnected to MQTT broker " + broker)
+                .setTitle("Reconnected to MQTT broker " + broker)
+                .setColor("good"));
+
         MqttClientPersistence persistence = new MemoryPersistence();
+
 
         MqttClient mqttClient = new MqttClient(broker, MqttClient.generateClientId(), persistence);
 
@@ -115,13 +135,19 @@ public class GatewayStatusMqttActor extends MqttFSMBase implements MqttCallbackE
     public void connectionLost(Throwable cause) {
         setState(MqttActorState.CONNECTING);
         log.info("Damn! I lost my MQTT connection. Paho's automatic reconnect with backoff kicking in because of: "+cause.getStackTrace());
+
+        // Send alert to Slack
+        slackAPI.call(slackConnectionLostMessage);
     }
 
     @Override
     public void connectComplete(boolean reconnect, String serverURI) {
         setState(MqttActorState.CONNECTED);
         if (reconnect) {
-            log.info("Yeah! I reconnected to my MQTT broker");
+            log.info("Phew! I reconnected to my MQTT broker");
+
+            // Send alert to Slack
+            slackAPI.call(slackReconnectedMessage);
         } else {
             log.info("Yeah! I connected to my MQTT broker for the first time");
         }
