@@ -24,6 +24,8 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class WeatherDataActor extends UntypedActor {
@@ -57,57 +59,63 @@ public class WeatherDataActor extends UntypedActor {
 
         this.getAndPublishWeatherDataTimeout = getContext().system().scheduler().schedule(
                 Duration.create(1, TimeUnit.MINUTES),
-                Duration.create(1, TimeUnit.DAYS),
+                Duration.create(6, TimeUnit.HOURS),
                 this::getAndPublishWeatherData,
                 getContext().dispatcher());
 
     }
 
     private void getAndPublishWeatherData() {
-        try {
-            HttpResponse<String> response = Unirest.get("http://www.yr.no/place/Norway/Sør-Trøndelag/Trondheim/Trondheim/forecast_hour_by_hour.xml")
-                .asString();
+        Map<String, String> citiesMap = new HashMap<>();
+        citiesMap.put("Trondheim", "http://www.yr.no/place/Norway/Sør-Trøndelag/Trondheim/Trondheim/forecast_hour_by_hour.xml");
+        citiesMap.put("Vejle", "http://www.yr.no/place/Denmark/South_Denmark/Vejle/forecast_hour_by_hour.xml");
 
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setIgnoringElementContentWhitespace(true);
+        citiesMap.forEach((city, yrURL) -> {
             try {
-                DocumentBuilder builder = factory.newDocumentBuilder();
-                InputSource inputSource = new InputSource(new StringReader(response.getBody()));
-                Document document = builder.parse(inputSource);
-                document.getDocumentElement().normalize();
+                HttpResponse<String> response = Unirest.get(yrURL)
+                        .asString();
 
-                Element location = (Element) document.getElementsByTagName("location").item(1);
+                DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+                factory.setIgnoringElementContentWhitespace(true);
+                try {
+                    DocumentBuilder builder = factory.newDocumentBuilder();
+                    InputSource inputSource = new InputSource(new StringReader(response.getBody()));
+                    Document document = builder.parse(inputSource);
+                    document.getDocumentElement().normalize();
 
-                double altitude = Double.parseDouble(location.getAttribute("altitude"));
-                double latitude = Double.parseDouble(location.getAttribute("latitude"));
-                double longitude = Double.parseDouble(location.getAttribute("longitude"));
+                    Element location = (Element) document.getElementsByTagName("location").item(1);
 
-                Element sun = (Element) document.getElementsByTagName("sun").item(0);
-                DateTime sunrise = new DateTime(sun.getAttribute("rise"));
-                DateTime sunset = new DateTime(sun.getAttribute("set"));
+                    double altitude = Double.parseDouble(location.getAttribute("altitude"));
+                    double latitude = Double.parseDouble(location.getAttribute("latitude"));
+                    double longitude = Double.parseDouble(location.getAttribute("longitude"));
 
-                NodeList hourlyForecasts = ((Element) document.getElementsByTagName("tabular").item(0)).getElementsByTagName("time");
+                    Element sun = (Element) document.getElementsByTagName("sun").item(0);
+                    DateTime sunrise = new DateTime(sun.getAttribute("rise"));
+                    DateTime sunset = new DateTime(sun.getAttribute("set"));
 
-                for (int i = 0; i < hourlyForecasts.getLength(); i++) {
-                    Node nNode = hourlyForecasts.item(i);
-                    Element hourForecast = (Element) nNode;
-                    DateTime from = new DateTime(hourForecast.getAttribute("from"));
-                    DateTime to = new DateTime(hourForecast.getAttribute("to"));
-                    int temperature = Integer.parseInt(((Element) hourForecast.getElementsByTagName("temperature").item(0)).getAttribute("value"));
-                    double precipitation = Double.parseDouble(((Element) hourForecast.getElementsByTagName("precipitation").item(0)).getAttribute("value"));
-                    String cloudiness = ((Element) hourForecast.getElementsByTagName("symbol").item(0)).getAttribute("name");
+                    NodeList hourlyForecasts = ((Element) document.getElementsByTagName("tabular").item(0)).getElementsByTagName("time");
 
-                    Messages.ForecastMessage message = new Messages.ForecastMessage(altitude, latitude, longitude, sunrise, sunset, from, temperature, precipitation, cloudiness);
+                    for (int i = 0; i < hourlyForecasts.getLength(); i++) {
+                        Node nNode = hourlyForecasts.item(i);
+                        Element hourForecast = (Element) nNode;
+                        DateTime from = new DateTime(hourForecast.getAttribute("from"));
+                        DateTime to = new DateTime(hourForecast.getAttribute("to"));
+                        int temperature = Integer.parseInt(((Element) hourForecast.getElementsByTagName("temperature").item(0)).getAttribute("value"));
+                        double precipitation = Double.parseDouble(((Element) hourForecast.getElementsByTagName("precipitation").item(0)).getAttribute("value"));
+                        String cloudiness = ((Element) hourForecast.getElementsByTagName("symbol").item(0)).getAttribute("name");
 
-                    // Tell DBActor to save in DB
-                    mediator.tell(new DistributedPubSubMediator.Publish(forecastTopic, message), self());
+                        Messages.ForecastMessage message = new Messages.ForecastMessage(city, altitude, latitude, longitude, sunrise, sunset, from, temperature, precipitation, cloudiness);
+
+                        // Tell DBActor to save in DB
+                        mediator.tell(new DistributedPubSubMediator.Publish(forecastTopic, message), self());
+                    }
+                } catch (ParserConfigurationException | SAXException | IOException e) {
+                    e.printStackTrace();
                 }
-            } catch (ParserConfigurationException | SAXException | IOException e) {
-                e.printStackTrace();
+            } catch (UnirestException ue) {
+                ue.printStackTrace();
             }
-        } catch (UnirestException ue) {
-            ue.printStackTrace();
-        }
+        });
     }
 
     @Override

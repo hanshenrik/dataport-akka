@@ -21,7 +21,7 @@ public class DataportMain {
         Props externalResourceSupervisorProps = Props.create(ExternalResourceSupervisorActor.class);
         final ActorRef externalResourceSupervisor = system.actorOf(externalResourceSupervisorProps, "externalResourceSupervisor");
 
-        Props dbProps = DBActor.props(SecretStuff.INFLUXDB_URL, SecretStuff.INFLUXDB_USERNAME, SecretStuff.INFLUXDB_PASSWORD);
+        Props dbProps = DBActor.props(SecretStuff.INFLUXDB_URL, SecretStuff.INFLUXDB_USERNAME, SecretStuff.INFLUXDB_PASSWORD, SecretStuff.INFLUXDB_DBNAME);
         final ActorRef db = system.actorOf(dbProps, "influxActor");
 
         Props weatherDataProps = WeatherDataActor.props();

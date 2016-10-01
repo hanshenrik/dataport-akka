@@ -7,6 +7,7 @@ import java.util.Map;
 
 public class Messages {
     public static final class ForecastMessage {
+        public String city;
         public double altitude;
         public double latitude;
         public double longitude;
@@ -16,10 +17,11 @@ public class Messages {
         public int temperature;
         public double precipitation;
         public String cloudiness;
-        public int daylightInMillis;
+        public long daylightInMillis;
 
-        public ForecastMessage(double altitude, double latitude, double longitude, DateTime sunrise, DateTime sunset,
+        public ForecastMessage(String city, double altitude, double latitude, double longitude, DateTime sunrise, DateTime sunset,
                                DateTime timestamp, int temperature, double precipitation, String cloudiness) {
+            this.city = city;
             this.altitude = altitude;
             this.latitude = latitude;
             this.longitude = longitude;

@@ -13,6 +13,7 @@ import no.ntnu.dataport.types.Messages;
 import org.influxdb.InfluxDB;
 import org.influxdb.InfluxDBFactory;
 import org.influxdb.dto.Point;
+import org.influxdb.dto.Pong;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -25,35 +26,36 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
      * @param url       The URL to the server running the InfluxDB. Must include port! E.g. 'http://myhost.com:8086'.
      * @param username  The username for the InfluxDB.
      * @param password  The password for the InfluxDB.
+     * @param dbName    The name of the DB used in the InfluxDB.
      * @return          a Props for creating this actor, which can then be further configured
      *                  (e.g. calling `.withDispatcher()` on it)
      */
-    public static Props props(final String url, final String username, final String password) {
+    public static Props props(final String url, final String username, final String password, final String dbName) {
         return Props.create(new Creator<DBActor>() {
             private static final long serialVersionUID = 1L;
 
             @Override
             public DBActor create() throws Exception {
-                return new DBActor(url, username, password);
+                return new DBActor(url, username, password, dbName);
             }
         });
     }
     ActorRef mediator;
 
-    public final String url;
-    public final String username;
-    public final String password;
-    private  String dbName;
-    private InfluxDB influxDB;
+    private final String url;
+    private final String username;
+    private final String password;
+    private String dbName;
+    public InfluxDB influxDB;
     public String siteGraphsTopic;
     public String forecastTopic;
     public Set<String> currentDevicesMonitored;
 
-    public DBActor(String url, String username, String password) {
+    public DBActor(String url, String username, String password, String dbName) {
         this.url = url;
         this.username = username;
         this.password = password;
-        this.dbName = "ctt";
+        this.dbName = dbName;
         this.siteGraphsTopic = "dataport/site/graphs";
         this.forecastTopic = "dataport/forecast";
         this.currentDevicesMonitored = new HashSet<>();
@@ -61,14 +63,13 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
         this.influxDB = InfluxDBFactory.connect(url, username, password);
 
         // Flush every 2000 Points, at least every 100ms
-        this.influxDB.enableBatch(2000, 100, TimeUnit.MILLISECONDS);
+        this.influxDB.enableBatch(24, 100, TimeUnit.MILLISECONDS);
 
         try {
-            // TODO: check influxDB instance when its been setup
-//            Pong pong = influxDB.ping();
-//            log().info("InfluxDB responded to ping in {} ms", pong.getResponseTime());
+            Pong pong = influxDB.ping();
+            log().info("InfluxDB responded to ping in {} ms", pong.getResponseTime());
 
-            self().tell(influxDB, self());
+            self().tell(pong, self());
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -86,7 +87,7 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
         startWith(DBActorState.UNINITIALIZED, new HashSet<>());
 
         when(DBActorState.UNINITIALIZED,
-                matchEvent(InfluxDB.class, (event, data) -> {
+                matchEvent(Pong.class, (event, data) -> {
                     mediator.tell(new DistributedPubSubMediator.Subscribe(siteGraphsTopic, self()), self());
                     mediator.tell(new DistributedPubSubMediator.Subscribe(forecastTopic, self()), self());
                     return goTo(DBActorState.INITIALIZED);
@@ -107,40 +108,49 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
                             return stay(); }
                 ).event(Messages.Observation.class,
                         (observation, data) -> {
-                            Point point = Point.measurement("observation")
+                            Point point = Point.measurement("ctt_observation")
                                     .time(observation.metadata.server_time.getMillis(), TimeUnit.MILLISECONDS)
-                                    .addField("eui", observation.eui)
+                                    .tag("device_eui", observation.eui)
+                                    .tag("gateway_eui", observation.metadata.gateway_eui)
                                     .addField("co2", observation.data.co2)
                                     .addField("no2", observation.data.no2)
+                                    .addField("pm1", observation.data.pm1)
+                                    .addField("pm2", observation.data.pm2)
+                                    .addField("pm10", observation.data.pm10)
                                     .addField("temperature", observation.data.temperature)
                                     .addField("humidity", observation.data.humidity)
                                     .addField("pressure", observation.data.pressure)
-                                    .addField("batteryLevel", observation.data.batteryLevel)
+                                    .addField("battery_level", observation.data.batteryLevel)
                                     .addField("rssi", observation.metadata.rssi)
                                     .addField("frequency", observation.metadata.frequency)
+                                    .addField("coding_rate", observation.metadata.codingrate)
+                                    .addField("crc", observation.metadata.crc)
+                                    .addField("lsnr", observation.metadata.lsnr)
+                                    .addField("channel", observation.metadata.channel)
                                     .build();
 
-                            // TODO: write to influxDB when available
-//                            influxDB.write(dbName, "autogen", point);
+                            log().info("Writing to InfluxDB, observation point: {}", point.toString());
+
+                            // Write to remote InfluxDB
+                            influxDB.write(dbName, "autogen", point);
+
                             return stay(); }
                 ).event(Messages.ForecastMessage.class,
                         (forecast, data) -> {
-                            Point point = Point.measurement("forecast")
+                            Point point = Point.measurement("weather_forecast")
                                     .time(forecast.timestamp.getMillis(), TimeUnit.MILLISECONDS)
+                                    .tag("city", forecast.city)
                                     .addField("temperature", forecast.temperature)
                                     .addField("precipitation", forecast.precipitation)
                                     .addField("cloudiness", forecast.cloudiness)
-                                    .addField("daylightInMillis", forecast.daylightInMillis)
+                                    .addField("daylight_in_millis", forecast.daylightInMillis)
                                     .build();
 
-                            log().info("Got daily points from YR: "+point.toString());
+                            log().info("Writing to InfluxDB, forecast point: {}", point.toString());
 
-                            // TODO: might be point with timestamp already existing. Chech whether it is overwritten or
-                            // added as new entry: https://github.com/influxdata/influxdb/issues/391. We would like it
-                            // to be overwritten as this is probably a better prediction since its made later.
+                            // Write to remote InfluxDB
+                            influxDB.write(dbName, "autogen", point);
 
-                            // TODO: write to influxDB when available
-//                            influxDB.write(dbName, "autogen", point);
                             return stay();
                         }));
 
