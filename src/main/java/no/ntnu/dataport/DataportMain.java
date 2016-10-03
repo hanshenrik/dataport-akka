@@ -53,14 +53,6 @@ public class DataportMain {
                 SecretStuff.VEJLE_APP_KEY,
                 new Position(55.711311, 9.536354)));
 
-        // UGLY. This is to make sure the ExternalResourceSupervisor is created before we tell it which applications to create
-        // TODO: Implement some message queue so it can queue messages if not fully created yet!
-        try {
-            Thread.sleep(1000);
-        } catch (Exception e) {
-
-        }
-
         for (ApplicationParameters params : applications) {
             system.actorOf(SiteActor.props(params.name, params.appEui, params.position), params.name);
             externalResourceSupervisor.tell(new Messages.MonitorApplicationMessage(
