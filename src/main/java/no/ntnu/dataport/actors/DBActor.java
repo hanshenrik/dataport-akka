@@ -112,6 +112,7 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
                                     .time(observation.metadata.server_time.getMillis(), TimeUnit.MILLISECONDS)
                                     .tag("device_eui", observation.eui)
                                     .tag("gateway_eui", observation.metadata.gateway_eui)
+                                    .tag("city", sender().path().parent().name())
                                     .addField("co2", observation.data.co2)
                                     .addField("no2", observation.data.no2)
                                     .addField("pm1", observation.data.pm1)
