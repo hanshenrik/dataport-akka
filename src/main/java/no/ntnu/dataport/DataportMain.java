@@ -1,6 +1,9 @@
 package no.ntnu.dataport;
 
 import akka.actor.*;
+import akka.pattern.Backoff;
+import akka.pattern.BackoffOptions;
+import akka.pattern.BackoffSupervisor;
 import no.ntnu.dataport.actors.DBActor;
 import no.ntnu.dataport.actors.ExternalResourceSupervisorActor;
 import no.ntnu.dataport.actors.SiteActor;
@@ -9,9 +12,11 @@ import no.ntnu.dataport.types.ApplicationParameters;
 import no.ntnu.dataport.types.Messages;
 import no.ntnu.dataport.types.Position;
 import no.ntnu.dataport.utils.SecretStuff;
+import scala.concurrent.duration.Duration;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class DataportMain {
 
@@ -22,7 +27,15 @@ public class DataportMain {
         final ActorRef externalResourceSupervisor = system.actorOf(externalResourceSupervisorProps, "externalResourceSupervisor");
 
         Props dbProps = DBActor.props(SecretStuff.INFLUXDB_URL, SecretStuff.INFLUXDB_USERNAME, SecretStuff.INFLUXDB_PASSWORD, SecretStuff.INFLUXDB_DBNAME);
-        final ActorRef db = system.actorOf(dbProps, "influxActor");
+        BackoffOptions dbActorBackoffOptions = Backoff.onFailure(
+                dbProps,
+                "influxDBActor",
+                Duration.create(3, TimeUnit.SECONDS),
+                Duration.create(2, TimeUnit.MINUTES),
+                0.2 // add 20% "noise" to vary the intervals slightly
+        );
+        final Props supervisorProps = BackoffSupervisor.props(dbActorBackoffOptions);
+        final ActorRef db = system.actorOf(supervisorProps, "influxDBActorSupervisor");
 
         Props weatherDataProps = WeatherDataActor.props();
         final ActorRef weatherData = system.actorOf(weatherDataProps, "weatherData");
