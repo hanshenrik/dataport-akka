@@ -9,6 +9,7 @@ import akka.pattern.Backoff;
 import akka.pattern.BackoffOptions;
 import akka.pattern.BackoffSupervisor;
 import no.ntnu.dataport.types.Messages;
+import no.ntnu.dataport.utils.SecretStuff;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import scala.concurrent.duration.Duration;
 
@@ -37,20 +38,8 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
     public ExternalResourceSupervisorActor() {
         this.monitoredApplications = new ArrayList<>();
 
-        // Connect to gateway status broker
+        // Props for the (unsupported, but still going strong) TTN gateway status broker
         Props ttnGatewayStatusBrokerProps = GatewayStatusMqttActor.props("tcp://croft.thethings.girovito.nl:1883");
-
-        // Connect to our broker to publish message to the website, dataport.item.ntnu.no
-        Props dataportBrokerProps = PublishingMqttActor.props("tcp://dataport.item.ntnu.no:1883", null, null);
-
-        BackoffOptions dataportBrokerBackoffOptions= Backoff.onFailure(
-                dataportBrokerProps,
-                "dataportBroker",
-                Duration.create(3, TimeUnit.SECONDS),
-                Duration.create(2, TimeUnit.MINUTES),
-                0.2 // add 20% "noise" to vary the intervals slightly
-            ).withSupervisorStrategy(mqttActorStrategy);
-
         BackoffOptions ttnGatewayStatusBrokerBackoffOptions = Backoff.onFailure(
                 ttnGatewayStatusBrokerProps,
                 "ttnGatewayStatusBroker",
@@ -58,12 +47,42 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
                 Duration.create(2, TimeUnit.MINUTES),
                 0.2 // add 20% "noise" to vary the intervals slightly
         ).withSupervisorStrategy(mqttActorStrategy);
-
-        final Props dataportBrokerSupervisorProps = BackoffSupervisor.props(dataportBrokerBackoffOptions);
         final Props ttnGatewayStatusBrokerSupervisorProps = BackoffSupervisor.props(ttnGatewayStatusBrokerBackoffOptions);
 
-        getContext().actorOf(dataportBrokerSupervisorProps, "dataportBrokerSupervisor");
-        getContext().actorOf(ttnGatewayStatusBrokerSupervisorProps, "ttnGatewayStatusBrokerSupervisor");
+
+        // Props for the broker that publishes status and reception messages
+        Props dataportBrokerProps = PublishingMqttActor.props("tcp://dataport.item.ntnu.no:1883", null, null);
+        BackoffOptions dataportBrokerBackoffOptions= Backoff.onFailure(
+                dataportBrokerProps,
+                "dataportBroker",
+                Duration.create(3, TimeUnit.SECONDS),
+                Duration.create(2, TimeUnit.MINUTES),
+                0.2 // add 20% "noise" to vary the intervals slightly
+            ).withSupervisorStrategy(mqttActorStrategy);
+        final Props dataportBrokerSupervisorProps = BackoffSupervisor.props(dataportBrokerBackoffOptions);
+
+
+        // Props for the DB where data is dumped
+        Props dbProps = DBActor.props(SecretStuff.INFLUXDB_URL, SecretStuff.INFLUXDB_USERNAME, SecretStuff.INFLUXDB_PASSWORD, SecretStuff.INFLUXDB_DBNAME);
+        BackoffOptions dbActorBackoffOptions = Backoff.onFailure(
+                dbProps,
+                "influxDBActor",
+                Duration.create(3, TimeUnit.SECONDS),
+                Duration.create(2, TimeUnit.MINUTES),
+                0.2 // add 20% "noise" to vary the intervals slightly
+        );
+        final Props dbSupervisorProps = BackoffSupervisor.props(dbActorBackoffOptions);
+
+
+        // Props for the actor retrieving weather forecast data from the open YR API
+        final Props weatherDataProps = WeatherDataActor.props();
+
+
+        // Start all the actors
+        context().actorOf(ttnGatewayStatusBrokerSupervisorProps, "ttnGatewayStatusBrokerSupervisor");
+        context().actorOf(dataportBrokerSupervisorProps, "dataportBrokerSupervisor");
+        context().actorOf(dbSupervisorProps, "influxDBActorSupervisor");
+        context().actorOf(weatherDataProps, "weatherData");
     }
 
     @Override
