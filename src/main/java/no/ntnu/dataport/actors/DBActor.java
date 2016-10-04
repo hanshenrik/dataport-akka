@@ -152,6 +152,15 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
                             // Write to remote InfluxDB
                             influxDB.write(dbName, "autogen", point);
 
+                            return stay(); }
+                ).event(Point.class,
+                        (point, data) -> {
+                            // TODO: make all actors just send points here?
+                            log().info("Writing to InfluxDB, point: {}", point.toString());
+
+                            // Write to remote InfluxDB
+                            influxDB.write(dbName, "autogen", point);
+
                             return stay();
                         }));
 
