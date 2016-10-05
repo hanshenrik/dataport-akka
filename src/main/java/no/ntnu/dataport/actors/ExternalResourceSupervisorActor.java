@@ -74,15 +74,25 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
         final Props dbSupervisorProps = BackoffSupervisor.props(dbActorBackoffOptions);
 
 
-        // Props for the actor retrieving weather forecast data from the open YR API
-        final Props weatherDataProps = WeatherDataActor.props();
+        // Props for the actor retrieving weather forecast data from api.met.no
+        final Props weatherForecastProps = WeatherForecastActor.props();
+
+
+        // Props for the actor retrieving uv forecast data from api.met.no
+        final Props uvForecastProps = UVForecastActor.props();
+
+
+        // Props for the actor retrieving sunrise/sunset times from api.met.no
+        final Props sunForecastProps = SunForecastActor.props();
 
 
         // Start all the actors
         context().actorOf(ttnGatewayStatusBrokerSupervisorProps, "ttnGatewayStatusBrokerSupervisor");
         context().actorOf(dataportBrokerSupervisorProps, "dataportBrokerSupervisor");
         context().actorOf(dbSupervisorProps, "influxDBActorSupervisor");
-        context().actorOf(weatherDataProps, "weatherData");
+        context().actorOf(weatherForecastProps, "weatherForecast");
+        context().actorOf(uvForecastProps, "uvForecast");
+        context().actorOf(sunForecastProps, "sunForecast");
     }
 
     @Override
