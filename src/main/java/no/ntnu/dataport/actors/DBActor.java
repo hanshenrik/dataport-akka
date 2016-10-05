@@ -48,7 +48,9 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
     private String dbName;
     public InfluxDB influxDB;
     public String siteGraphsTopic;
-    public String forecastTopic;
+    public String weatherForecastTopic;
+    public String uvForecastTopic;
+    public String sunForecastTopic;
     public Set<String> currentDevicesMonitored;
 
     public DBActor(String url, String username, String password, String dbName) {
@@ -57,13 +59,15 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
         this.password = password;
         this.dbName = dbName;
         this.siteGraphsTopic = "dataport/site/graphs";
-        this.forecastTopic = "dataport/forecast";
+        this.weatherForecastTopic = "dataport/forecast/weather";
+        this.uvForecastTopic = "dataport/forecast/uv";
+        this.sunForecastTopic = "dataport/forecast/sun";
         this.currentDevicesMonitored = new HashSet<>();
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.influxDB = InfluxDBFactory.connect(url, username, password);
 
         // Flush every 2000 Points, at least every 100ms
-        this.influxDB.enableBatch(24, 100, TimeUnit.MILLISECONDS);
+        this.influxDB.enableBatch(2000, 100, TimeUnit.MILLISECONDS);
 
         try {
             Pong pong = influxDB.ping();
@@ -89,7 +93,9 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
         when(DBActorState.UNINITIALIZED,
                 matchEvent(Pong.class, (event, data) -> {
                     mediator.tell(new DistributedPubSubMediator.Subscribe(siteGraphsTopic, self()), self());
-                    mediator.tell(new DistributedPubSubMediator.Subscribe(forecastTopic, self()), self());
+                    mediator.tell(new DistributedPubSubMediator.Subscribe(weatherForecastTopic, self()), self());
+                    mediator.tell(new DistributedPubSubMediator.Subscribe(uvForecastTopic, self()), self());
+                    mediator.tell(new DistributedPubSubMediator.Subscribe(sunForecastTopic, self()), self());
                     return goTo(DBActorState.INITIALIZED);
                 }));
 
