@@ -36,22 +36,25 @@ public class ConvertUtils {
         String payloadHexOnlyData = payloadHexWithHeader.substring(36); // Skip the header
         float co2 = hex8BytesToFloat(payloadHexOnlyData.substring(2, 10));
         float no2 = hex8BytesToFloat(payloadHexOnlyData.substring(12, 20));
-        float temp = hex8BytesToFloat(payloadHexOnlyData.substring(22, 30));
-        float hum = hex8BytesToFloat(payloadHexOnlyData.substring(32, 40));
-        float pres = hex8BytesToFloat(payloadHexOnlyData.substring(42, 50));
-        int bat;
+        float temperature = hex8BytesToFloat(payloadHexOnlyData.substring(22, 30));
+        float humidity = hex8BytesToFloat(payloadHexOnlyData.substring(32, 40));
+        float pressure = hex8BytesToFloat(payloadHexOnlyData.substring(42, 50));
+        int batteryLevel;
+
+        // Divide pressure by 100 to get hPa instead of Pa, since forecast values from met.no are given in hPa
+        float pressureInHPa = pressure / 100;
 
         Messages.Data data;
         if (payloadHexOnlyData.length() > 55) {
             float pm1 = hex8BytesToFloat(payloadHexOnlyData.substring(52, 60));
             float pm2 = hex8BytesToFloat(payloadHexOnlyData.substring(62, 70));
             float pm10 = hex8BytesToFloat(payloadHexOnlyData.substring(72, 80));
-            bat = hex2BytesToInt(payloadHexOnlyData.substring(82, 84));
-            data = new Messages.Data(co2, no2, temp, hum, pres, pm1, pm2, pm10, bat);
+            batteryLevel = hex2BytesToInt(payloadHexOnlyData.substring(82, 84));
+            data = new Messages.Data(co2, no2, temperature, humidity, pressureInHPa, pm1, pm2, pm10, batteryLevel);
         }
         else {
-            bat = hex2BytesToInt(payloadHexOnlyData.substring(52, 54));
-            data = new Messages.Data(co2, no2, temp, hum, pres, bat);
+            batteryLevel = hex2BytesToInt(payloadHexOnlyData.substring(52, 54));
+            data = new Messages.Data(co2, no2, temperature, humidity, pressureInHPa, batteryLevel);
         }
         return new Messages.Observation(CTT2Observation.dev_eui, CTT2Observation.metadata.get(0), data);
     }
