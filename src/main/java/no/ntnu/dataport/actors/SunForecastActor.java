@@ -84,7 +84,7 @@ public class SunForecastActor extends UntypedActor {
                             Element sunElement = timeElement.getChild("location").getChild("sun");
                             DateTime sunrise = new DateTime(sunElement.getAttribute("rise").getValue());
                             DateTime sunset = new DateTime(sunElement.getAttribute("set").getValue());
-                            long daylightInMillis = sunset.getMillisOfDay() - sunrise.getMillisOfDay();
+                            long daylightInMillis = sunset.getMillis() - sunrise.getMillis();
                             Point point = Point.measurement("sun_forecast")
                                     .time(time.getMillis(), TimeUnit.MILLISECONDS)
                                     .tag("city", city)
