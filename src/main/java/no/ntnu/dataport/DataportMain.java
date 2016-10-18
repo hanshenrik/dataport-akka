@@ -34,6 +34,8 @@ public class DataportMain {
 
         for (ApplicationParameters params : applications) {
             system.actorOf(SiteActor.props(params.name, params.appEui, params.position), params.name);
+
+            // Create actors that listens to messages from the application's sensors from TTNs broker
             externalResourceSupervisor.tell(new Messages.MonitorApplicationMessage(
                     params.name,
                     params.appEui,

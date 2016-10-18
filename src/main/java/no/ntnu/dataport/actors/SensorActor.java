@@ -26,7 +26,7 @@ import static no.ntnu.dataport.utils.ConvertUtils.convertToObservation;
 public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
 
     /**
-     *
+     * A SensorActor represents a physical sensor.
      * @param eui           The eui of the sensor.
      * @param airtableID    The record  ID in Airtable for the sensor.
      * @param appEui        The TTN AppEui.
@@ -75,7 +75,7 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
         if (from != to) {
             log().info("Going from {} to {}", from, to);
 
-            // Update Airtable if I'm initialized
+            // Update Airtable when I'm initialized
             if (to != DeviceState.UNINITIALIZED) {
                 try {
                     Unirest.patch(airtableRecordURL)

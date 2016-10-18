@@ -19,7 +19,7 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 public class ApplicationMqttActor extends MqttFSMBase implements MqttCallbackExtended {
     /**
      * Create Props for an actor of this type.
-     * @param broker    The broker address to be passed to this actor’s constructor.
+     * @param broker    The broker address this actor will connect to, tcp://staging.thethingsnetwork.org:1883 for TTN.
      * @param appEui    The appEui for the TTN application.
      * @param appKey    The appKey for the TTN application.
      * @return a Props for creating this actor, which can then be further configured

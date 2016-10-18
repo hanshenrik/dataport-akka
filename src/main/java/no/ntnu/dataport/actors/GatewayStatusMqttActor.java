@@ -27,7 +27,7 @@ public class GatewayStatusMqttActor extends MqttFSMBase implements MqttCallbackE
 
     /**
      * Create Props for an actor of this type.
-     * @param broker    The broker address to be passed to this actor’s constructor.
+     * @param broker    The broker address this actor will connect to.
      * @return a Props for creating this actor, which can then be further configured
      *         (e.g. calling `.withDispatcher()` on it)
      */
