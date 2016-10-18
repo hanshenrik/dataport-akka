@@ -6,36 +6,6 @@ import java.util.List;
 import java.util.Map;
 
 public class Messages {
-    public static final class ForecastMessage {
-        public String city;
-        public double altitude;
-        public double latitude;
-        public double longitude;
-        public DateTime sunrise;
-        public DateTime sunset;
-        public DateTime timestamp;
-        public int temperature;
-        public double precipitation;
-        public String cloudiness;
-        public long daylightInMillis;
-
-        public ForecastMessage(String city, double altitude, double latitude, double longitude, DateTime sunrise, DateTime sunset,
-                               DateTime timestamp, int temperature, double precipitation, String cloudiness) {
-            this.city = city;
-            this.altitude = altitude;
-            this.latitude = latitude;
-            this.longitude = longitude;
-            this.sunrise = sunrise;
-            this.sunset = sunset;
-            this.timestamp = timestamp;
-            this.temperature = temperature;
-            this.precipitation = precipitation;
-            this.cloudiness = cloudiness;
-
-            this.daylightInMillis = sunset.getMillisOfDay() - sunrise.getMillisOfDay();
-        }
-    }
-
     public static final class NetworkGraphMessage {
         public final Map<String, NetworkComponent> graph;
         public NetworkGraphMessage(Map<String, NetworkComponent> graph) {

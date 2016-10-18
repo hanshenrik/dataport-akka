@@ -142,23 +142,6 @@ public class DBActor extends AbstractFSM<DBActorState, Set<String>> {
                             influxDB.write(dbName, "autogen", point);
 
                             return stay(); }
-                ).event(Messages.ForecastMessage.class,
-                        (forecast, data) -> {
-                            Point point = Point.measurement("weather_forecast")
-                                    .time(forecast.timestamp.getMillis(), TimeUnit.MILLISECONDS)
-                                    .tag("city", forecast.city)
-                                    .addField("temperature", forecast.temperature)
-                                    .addField("precipitation", forecast.precipitation)
-                                    .addField("cloudiness", forecast.cloudiness)
-                                    .addField("daylight_in_millis", forecast.daylightInMillis)
-                                    .build();
-
-                            log().info("Writing to InfluxDB, forecast point: {}", point.toString());
-
-                            // Write to remote InfluxDB
-                            influxDB.write(dbName, "autogen", point);
-
-                            return stay(); }
                 ).event(Point.class,
                         (point, data) -> {
                             // TODO: make all actors just send points here?
