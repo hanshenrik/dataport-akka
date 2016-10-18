@@ -2,7 +2,7 @@ import NativePackagerHelper._
 
 name := """dataport-akka"""
 
-version := "0.9.9"
+version := "0.9.10"
 
 scalaVersion := "2.11.7"
 ivyScala := ivyScala.value map { _.copy(overrideScalaVersion = true) }
