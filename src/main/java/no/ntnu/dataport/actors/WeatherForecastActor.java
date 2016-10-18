@@ -6,6 +6,8 @@ import akka.cluster.pubsub.DistributedPubSubMediator;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
+import no.ntnu.dataport.types.Messages;
+import no.ntnu.dataport.types.Position;
 import org.influxdb.dto.Point;
 import org.jdom2.Document;
 import org.jdom2.Element;
@@ -35,9 +37,10 @@ public class WeatherForecastActor extends UntypedActor {
     }
 
     ActorRef mediator;
-    final Cancellable getAndPublishWeatherDataTimeout;
-    final String weatherForecastTopic;
-    final String weatherAPIBaseURL;
+    private final Cancellable getAndPublishWeatherDataTimeout;
+    private final String weatherForecastTopic;
+    private final String weatherAPIBaseURL;
+    private Map<String, String> cityURLMap;
 
     @Override
     public void postStop() {
@@ -50,6 +53,7 @@ public class WeatherForecastActor extends UntypedActor {
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.weatherForecastTopic = "dataport/forecast/weather";
         this.weatherAPIBaseURL = "http://api.met.no/weatherapi/locationforecastlts/1.2/?lat=%f;lon=%f";
+        this.cityURLMap = new HashMap<>();
 
         this.getAndPublishWeatherDataTimeout = getContext().system().scheduler().schedule(
                 Duration.create(1, TimeUnit.MINUTES),
@@ -60,10 +64,6 @@ public class WeatherForecastActor extends UntypedActor {
     }
 
     private void getAndPublishWeatherForecast() {
-        Map<String, String> cityURLMap = new HashMap<>();
-        cityURLMap.put("Trondheim", String.format(weatherAPIBaseURL, 63.430515, 10.395053));
-        cityURLMap.put("Vejle", String.format(weatherAPIBaseURL, 55.711311, 9.536354));
-
         cityURLMap.forEach((city, apiURLForCity) -> {
             try {
                 SAXBuilder jdomBuilder = new SAXBuilder();
@@ -126,5 +126,15 @@ public class WeatherForecastActor extends UntypedActor {
     @Override
     public void onReceive(Object message) {
         log.info("Received: {} from {}", message, getSender());
+
+        if (message instanceof Messages.GetForecastForCityMessage) {
+            String city = ((Messages.GetForecastForCityMessage) message).name;
+            Position position = ((Messages.GetForecastForCityMessage) message).position;
+
+            cityURLMap.put(city, String.format(weatherAPIBaseURL, position.lat, position.lon));
+        }
+        else {
+            unhandled(message);
+        }
     }
 }

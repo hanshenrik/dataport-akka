@@ -9,6 +9,7 @@ import akka.pattern.Backoff;
 import akka.pattern.BackoffOptions;
 import akka.pattern.BackoffSupervisor;
 import no.ntnu.dataport.types.Messages;
+import no.ntnu.dataport.types.Position;
 import no.ntnu.dataport.utils.SecretStuff;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import scala.concurrent.duration.Duration;
@@ -23,6 +24,7 @@ import static akka.actor.SupervisorStrategy.*;
 public class ExternalResourceSupervisorActor extends UntypedActor {
     LoggingAdapter log = Logging.getLogger(getContext().system(), this);
     private List<ActorRef> monitoredApplications;
+    private List<ActorRef> forecastActors;
 
     public static Props props() {
         return Props.create(new Creator<ExternalResourceSupervisorActor>() {
@@ -37,6 +39,7 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
 
     public ExternalResourceSupervisorActor() {
         this.monitoredApplications = new ArrayList<>();
+        this.forecastActors = new ArrayList<>();
 
         // Props for the (unsupported, but still going strong) TTN gateway status broker
         Props ttnGatewayStatusBrokerProps = GatewayStatusMqttActor.props("tcp://croft.thethings.girovito.nl:1883");
@@ -86,24 +89,32 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
         final Props sunForecastProps = SunForecastActor.props();
 
 
-        // Start all the actors
+        // Create all the actors
         context().actorOf(ttnGatewayStatusBrokerSupervisorProps, "ttnGatewayStatusBrokerSupervisor");
         context().actorOf(dataportBrokerSupervisorProps, "dataportBrokerSupervisor");
         context().actorOf(dbSupervisorProps, "influxDBActorSupervisor");
-        context().actorOf(weatherForecastProps, "weatherForecast");
-        context().actorOf(uvForecastProps, "uvForecast");
-        context().actorOf(sunForecastProps, "sunForecast");
+
+        ActorRef weatherForecastActor = context().actorOf(weatherForecastProps, "weatherForecast");
+        ActorRef uvForecastActor = context().actorOf(uvForecastProps, "uvForecast");
+        ActorRef sunForecastActor = context().actorOf(sunForecastProps, "sunForecast");
+
+        forecastActors.add(weatherForecastActor);
+        forecastActors.add(uvForecastActor);
+        forecastActors.add(sunForecastActor);
     }
 
     @Override
     public void onReceive(Object message) throws Throwable {
         log.debug("Received {} from {}", message, getSender());
         if (message instanceof Messages.MonitorApplicationMessage) {
-            String actorName = "ttn-" + ((Messages.MonitorApplicationMessage) message).name + "-broker";
+            String city = ((Messages.MonitorApplicationMessage) message).name;
+            String appEui = ((Messages.MonitorApplicationMessage) message).appEui;
+            String appKey = ((Messages.MonitorApplicationMessage) message).appKey;
+            Position position = ((Messages.MonitorApplicationMessage) message).position;
+
+            String actorName = "ttn-" + city + "-broker";
             Props applicationBrokerProps = ApplicationMqttActor.props(
-                    "tcp://staging.thethingsnetwork.org:1883",
-                    ((Messages.MonitorApplicationMessage) message).appEui,
-                    ((Messages.MonitorApplicationMessage) message).appKey);
+                    "tcp://staging.thethingsnetwork.org:1883", appEui, appKey);
 
             BackoffOptions applicationBrokerBackoffOptions = Backoff.onFailure(
                     applicationBrokerProps,
@@ -118,6 +129,12 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
             ActorRef app = getContext().actorOf(supervisorProps, actorName + "-supervisor");
 
             monitoredApplications.add(app);
+
+            // Tell each forecast actor to fetch data for this city
+            for (ActorRef forecastActor : forecastActors) {
+                forecastActor.tell(new Messages.GetForecastForCityMessage(city, position), self());
+            }
+
         }
         else {
             unhandled(message);

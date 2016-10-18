@@ -27,6 +27,16 @@ public class Messages {
         }
     }
 
+    public static final class GetForecastForCityMessage {
+        public final String name;
+        public final Position position;
+
+        public GetForecastForCityMessage(String name, Position position) {
+            this.name = name;
+            this.position = position;
+        }
+    }
+
     public static final class Observation {
         public final String eui;
         public final CTT2Observation.Metadata metadata;

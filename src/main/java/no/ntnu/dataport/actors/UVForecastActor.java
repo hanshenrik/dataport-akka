@@ -9,6 +9,7 @@ import akka.cluster.pubsub.DistributedPubSubMediator;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
+import no.ntnu.dataport.types.Messages;
 import no.ntnu.dataport.types.Position;
 import org.influxdb.dto.Point;
 import org.jdom2.Document;
@@ -43,8 +44,9 @@ public class UVForecastActor extends UntypedActor {
     }
 
     ActorRef mediator;
-    final Cancellable getAndPublishUVDataTimeout;
-    final String forecastTopic;
+    private final Cancellable getAndPublishUVDataTimeout;
+    private final String forecastTopic;
+    private Map<String, Position> closestForecastPositionToCityMap;
 
     @Override
     public void postStop() {
@@ -56,20 +58,16 @@ public class UVForecastActor extends UntypedActor {
 
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.forecastTopic = "dataport/forecast/uv";
+        this.closestForecastPositionToCityMap = new HashMap<>();
 
         this.getAndPublishUVDataTimeout = getContext().system().scheduler().schedule(
                 Duration.create(3, TimeUnit.MINUTES),
                 Duration.create(12, TimeUnit.HOURS),
                 this::getAndPublishUVForecast,
                 getContext().dispatcher());
-
     }
 
     private void getAndPublishUVForecast() {
-        Map<String, Position> closestForecastPositionToCityMap = new HashMap<>();
-        closestForecastPositionToCityMap.put("Trondheim", new Position(63.50, 10.50));
-        closestForecastPositionToCityMap.put("Vejle", new Position(55.75, 9.50));
-        // TODO: use city name and position provided in DataportMain and just round to closest 0.25
         Pattern pattern = Pattern.compile("http://.*?time=(.*?);.*?content_type=text%2Fxml");
         Map<String, DateTime> uvForecastURLsToCheck = new HashMap<>();
         String listOfAvailableUVForecastURLsURL = "http://api.met.no/weatherapi/uvforecast/1.0/available";
@@ -123,9 +121,7 @@ public class UVForecastActor extends UntypedActor {
                                     mediator.tell(new DistributedPubSubMediator.Publish(forecastTopic, point), self());
                                 }
                             }
-
                 });
-
             }
         }
         catch (IOException | JDOMException e) {
@@ -136,5 +132,18 @@ public class UVForecastActor extends UntypedActor {
     @Override
     public void onReceive(Object message) {
         log.info("Received: {} from {}", message, getSender());
+
+        if (message instanceof Messages.GetForecastForCityMessage) {
+            String city = ((Messages.GetForecastForCityMessage) message).name;
+            Position position = ((Messages.GetForecastForCityMessage) message).position;
+
+            // The positions used in the API are rounded to the nearest quarter
+            Position positionRounded = new Position(Math.round(position.lat*4)/4f, Math.round(position.lon*4)/4f);
+
+            closestForecastPositionToCityMap.put(city, positionRounded);
+        }
+        else {
+            unhandled(message);
+        }
     }
 }

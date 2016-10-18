@@ -9,6 +9,8 @@ import akka.cluster.pubsub.DistributedPubSubMediator;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.japi.Creator;
+import no.ntnu.dataport.types.Messages;
+import no.ntnu.dataport.types.Position;
 import org.influxdb.dto.Point;
 import org.jdom2.Document;
 import org.jdom2.Element;
@@ -39,9 +41,10 @@ public class SunForecastActor extends UntypedActor {
     }
 
     ActorRef mediator;
-    final Cancellable getAndPublishSunDataTimeout;
-    final String sunForecastTopic;
-    final String sunriseAPIBaseURL;
+    private final Cancellable getAndPublishSunDataTimeout;
+    private final String sunForecastTopic;
+    private final String sunriseAPIBaseURL;
+    private Map<String, Position> cityPositionMap;
 
     @Override
     public void postStop() {
@@ -54,6 +57,7 @@ public class SunForecastActor extends UntypedActor {
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.sunForecastTopic = "dataport/forecast/sun";
         this.sunriseAPIBaseURL = "http://api.met.no/weatherapi/sunrise/1.0/?lat=%f;lon=-%f;from=%s;to=%s";
+        this.cityPositionMap = new HashMap<>();
 
         // TODO: Should probably only get 1 every time, not 30. Only need to get 30 first time. If we gather every day, that is.
         this.getAndPublishSunDataTimeout = getContext().system().scheduler().schedule(
@@ -65,13 +69,11 @@ public class SunForecastActor extends UntypedActor {
     }
 
     private void getAndPublishSunlightForecast() {
-        Map<String, String> cityURLMap = new HashMap<>();
         LocalDate today = new LocalDate();
         LocalDate thirtyDaysAhead = today.plusDays(30);
-        cityURLMap.put("Trondheim", String.format(sunriseAPIBaseURL, 63.430515, 10.395053, today, thirtyDaysAhead));
-        cityURLMap.put("Vejle", String.format(sunriseAPIBaseURL, 55.711311, 9.536354, today, thirtyDaysAhead));
 
-        cityURLMap.forEach((city, apiURLForCity) -> {
+        cityPositionMap.forEach((city, position) -> {
+            String apiURLForCity = String.format(sunriseAPIBaseURL, position.lat, position.lon, today, thirtyDaysAhead);
             try {
                 SAXBuilder jdomBuilder = new SAXBuilder();
                 Document jdomDocument = jdomBuilder.build(apiURLForCity);
@@ -106,5 +108,14 @@ public class SunForecastActor extends UntypedActor {
     @Override
     public void onReceive(Object message) {
         log.info("Received: {} from {}", message, getSender());
+        if (message instanceof Messages.GetForecastForCityMessage) {
+            String city = ((Messages.GetForecastForCityMessage) message).name;
+            Position position = ((Messages.GetForecastForCityMessage) message).position;
+
+            cityPositionMap.put(city, position);
+        }
+        else {
+            unhandled(message);
+        }
     }
 }
