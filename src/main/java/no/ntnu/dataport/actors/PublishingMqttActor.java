@@ -13,12 +13,12 @@ import com.google.gson.GsonBuilder;
 import net.gpedro.integrations.slack.SlackApi;
 import net.gpedro.integrations.slack.SlackAttachment;
 import net.gpedro.integrations.slack.SlackMessage;
+import no.ntnu.dataport.DataportMain;
 import no.ntnu.dataport.enums.MqttActorState;
 import no.ntnu.dataport.types.GatewayData;
 import no.ntnu.dataport.types.Messages.*;
 import no.ntnu.dataport.types.NetworkComponent;
 import no.ntnu.dataport.types.SensorData;
-import no.ntnu.dataport.utils.SecretStuff;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
@@ -61,8 +61,11 @@ public class PublishingMqttActor extends MqttFSMBase implements MqttCallbackExte
     Set<String> currentDevicesMonitored;
     SlackMessage slackConnectionLostMessage;
     SlackMessage slackReconnectedMessage;
+    private final String slackAPIWebhook;
+
 
     public PublishingMqttActor(String broker, String username, String password) throws MqttException {
+        this.slackAPIWebhook = DataportMain.properties.getProperty("SLACK_API_WEBHOOK");
         this.broker     = broker;
         this.username   = username;
         this.password   = password;
@@ -72,7 +75,7 @@ public class PublishingMqttActor extends MqttFSMBase implements MqttCallbackExte
         this.currentDevicesMonitored = new HashSet<>();
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
 
-        this.slackAPI = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
+        this.slackAPI = new SlackApi(slackAPIWebhook);
         this.slackConnectionLostMessage = new SlackMessage("").addAttachments(new SlackAttachment()
                 .setFallback("Lost connection to MQTT broker " + broker + ". I'll let you know when its back up.")
                 .setTitle("Lost connection to MQTT broker " + broker)

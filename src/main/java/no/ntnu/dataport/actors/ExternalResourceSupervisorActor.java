@@ -8,9 +8,9 @@ import akka.japi.pf.DeciderBuilder;
 import akka.pattern.Backoff;
 import akka.pattern.BackoffOptions;
 import akka.pattern.BackoffSupervisor;
+import no.ntnu.dataport.DataportMain;
 import no.ntnu.dataport.types.Messages;
 import no.ntnu.dataport.types.Position;
-import no.ntnu.dataport.utils.SecretStuff;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import scala.concurrent.duration.Duration;
 
@@ -37,7 +37,17 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
         });
     }
 
+    private final String influxDBURL;
+    private final String influxDBUsername;
+    private final String influxDBPassword;
+    private final String influxDBName;
+
     public ExternalResourceSupervisorActor() {
+        this.influxDBURL        = DataportMain.properties.getProperty("INFLUXDB_URL");
+        this.influxDBUsername   = DataportMain.properties.getProperty("INFLUXDB_USERNAME");
+        this.influxDBPassword   = DataportMain.properties.getProperty("INFLUXDB_PASSWORD");
+        this.influxDBName       = DataportMain.properties.getProperty("INFLUXDB_DBNAME");
+
         this.monitoredApplications = new ArrayList<>();
         this.forecastActors = new ArrayList<>();
 
@@ -66,7 +76,7 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
 
 
         // Props for the DB where data is dumped
-        Props dbProps = DBActor.props(SecretStuff.INFLUXDB_URL, SecretStuff.INFLUXDB_USERNAME, SecretStuff.INFLUXDB_PASSWORD, SecretStuff.INFLUXDB_DBNAME);
+        Props dbProps = DBActor.props(influxDBURL, influxDBUsername, influxDBPassword, influxDBName);
         BackoffOptions dbActorBackoffOptions = Backoff.onFailure(
                 dbProps,
                 "influxDBActor",
@@ -94,10 +104,10 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
         context().actorOf(dataportBrokerSupervisorProps, "dataportBrokerSupervisor");
         context().actorOf(dbSupervisorProps, "influxDBActorSupervisor");
 
+        // Add forecast actors to list, will be created per city when I receive message to monitor application in a city
         ActorRef weatherForecastActor = context().actorOf(weatherForecastProps, "weatherForecast");
         ActorRef uvForecastActor = context().actorOf(uvForecastProps, "uvForecast");
         ActorRef sunForecastActor = context().actorOf(sunForecastProps, "sunForecast");
-
         forecastActors.add(weatherForecastActor);
         forecastActors.add(uvForecastActor);
         forecastActors.add(sunForecastActor);
@@ -142,7 +152,7 @@ public class ExternalResourceSupervisorActor extends UntypedActor {
     }
 
     /**
-     * Supervision strategy for all Actors extending MqttFSMBase.
+     * Supervision strategy for all Actors dealing with MQTT connections
      */
     private OneForOneStrategy mqttActorStrategy =
         new OneForOneStrategy(

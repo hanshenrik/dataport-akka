@@ -12,10 +12,10 @@ import com.mashape.unirest.http.exceptions.UnirestException;
 import net.gpedro.integrations.slack.SlackApi;
 import net.gpedro.integrations.slack.SlackAttachment;
 import net.gpedro.integrations.slack.SlackMessage;
+import no.ntnu.dataport.DataportMain;
 import no.ntnu.dataport.enums.DeviceState;
 import no.ntnu.dataport.types.*;
 import no.ntnu.dataport.types.Messages.*;
-import no.ntnu.dataport.utils.SecretStuff;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import scala.Option;
 import scala.concurrent.duration.FiniteDuration;
@@ -54,16 +54,23 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
     String internalReceptionPublishTopic;
     String airtableRecordURL;
     SlackApi slackAPI;
+    private final String slackAPIWebhook;
+    private final String airtableBaseID;
+    private final String airtableAPIKey;
 
     public SensorActor(final String eui, final String airtableID, String appEui, String city, Position position, FiniteDuration timeout) {
+        this.slackAPIWebhook = DataportMain.properties.getProperty("SLACK_API_WEBHOOK");
+        this.airtableBaseID = DataportMain.properties.getProperty("AIRTABLE_BASE_ID");
+        this.airtableAPIKey = DataportMain.properties.getProperty("AIRTABLE_API_KEY");
+
         this.initialData = new SensorData(eui, appEui, city, position, timeout);
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.externalReceiveTopic = "external/" + appEui + "/devices/" + eui + "/up";
         this.internalStatusPublishTopic = "dataport/site/" + city + "/sensor/" + eui + "/events/status";
         this.internalReceptionPublishTopic = "dataport/site/" + city + "/sensor/" + eui + "/events/reception";
-        this.airtableRecordURL = "https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + city + "/" + airtableID;
+        this.airtableRecordURL = "https://api.airtable.com/v0/" + airtableBaseID + "/" + city + "/" + airtableID;
 
-        this.slackAPI = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
+        this.slackAPI = new SlackApi(slackAPIWebhook);
 
         setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
@@ -79,7 +86,7 @@ public class SensorActor extends AbstractFSM<DeviceState, SensorData> {
             if (to != DeviceState.UNINITIALIZED) {
                 try {
                     Unirest.patch(airtableRecordURL)
-                            .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
+                            .header("Authorization", "Bearer " + airtableAPIKey)
                             .header("Content-Type", "application/json")
                             .header("accept", "application/json")
                             .body(new JsonNode("{fields: {status: " + to + "}}"))

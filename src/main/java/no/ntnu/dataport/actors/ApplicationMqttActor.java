@@ -10,8 +10,8 @@ import akka.japi.Creator;
 import net.gpedro.integrations.slack.SlackApi;
 import net.gpedro.integrations.slack.SlackAttachment;
 import net.gpedro.integrations.slack.SlackMessage;
+import no.ntnu.dataport.DataportMain;
 import no.ntnu.dataport.enums.MqttActorState;
-import no.ntnu.dataport.utils.SecretStuff;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
@@ -47,14 +47,16 @@ public class ApplicationMqttActor extends MqttFSMBase implements MqttCallbackExt
     final SlackApi slackAPI;
     final SlackMessage slackConnectionLostMessage;
     final SlackMessage slackReconnectedMessage;
+    private final String slackAPIWebhook;
 
     public ApplicationMqttActor(String broker, String appEui, String appKey) throws MqttException {
+        this.slackAPIWebhook = DataportMain.properties.getProperty("SLACK_API_WEBHOOK");
         this.broker = broker;
         this.appEui = appEui;
         this.appKey = appKey;
         this.applicationDevicesUpTopic = appEui + "/devices/+/up";
 
-        this.slackAPI = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
+        this.slackAPI = new SlackApi(slackAPIWebhook);
         this.slackConnectionLostMessage = new SlackMessage("").addAttachments(new SlackAttachment()
                 .setFallback("Lost connection to MQTT broker " + broker + " subscribing to application " + appEui + ". I'll let you know when its back up.")
                 .setTitle("Lost connection to MQTT broker " + broker + " subscribing to application " + appEui)

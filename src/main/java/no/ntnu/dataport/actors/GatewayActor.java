@@ -15,10 +15,10 @@ import com.mashape.unirest.http.exceptions.UnirestException;
 import net.gpedro.integrations.slack.SlackApi;
 import net.gpedro.integrations.slack.SlackAttachment;
 import net.gpedro.integrations.slack.SlackMessage;
+import no.ntnu.dataport.DataportMain;
 import no.ntnu.dataport.enums.DeviceState;
 import no.ntnu.dataport.types.*;
 import no.ntnu.dataport.utils.Haversine;
-import no.ntnu.dataport.utils.SecretStuff;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.joda.time.DateTime;
 import scala.Option;
@@ -55,16 +55,23 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
     String airtableRecordURL;
     Gson gson;
     SlackApi slackAPI;
+    private final String slackAPIWebhook;
+    private final String airtableBaseID;
+    private final String airtableAPIKey;
 
     public GatewayActor(final String eui, final String airtableID, String appEui, String city, Position position,
                         FiniteDuration timeout) {
+        this.slackAPIWebhook = DataportMain.properties.getProperty("SLACK_API_WEBHOOK");
+        this.airtableBaseID = DataportMain.properties.getProperty("AIRTABLE_BASE_ID");
+        this.airtableAPIKey = DataportMain.properties.getProperty("AIRTABLE_API_KEY");
+
         this.initialData = new GatewayData(eui, appEui, city, position, timeout);
         this.mediator = DistributedPubSub.get(context().system()).mediator();
         this.gson = Converters.registerDateTime(new GsonBuilder()).create();
         this.internalStatusPublishTopic = "dataport/site/" + city + "/gateway/" + eui + "/events/status";
         this.receiveStatusTopic = "external/gateways/" + eui + "/status";
-        this.slackAPI = new SlackApi(SecretStuff.SLACK_API_WEBHOOK);
-        this.airtableRecordURL = "https://api.airtable.com/v0/" + SecretStuff.AIRTABLE_BASE_ID + "/" + city + "/" + airtableID;
+        this.slackAPI = new SlackApi(slackAPIWebhook);
+        this.airtableRecordURL = "https://api.airtable.com/v0/" + airtableBaseID + "/" + city + "/" + airtableID;
 
         setStateTimeout(DeviceState.OK, Option.apply(timeout));
 
@@ -80,7 +87,7 @@ public class GatewayActor extends AbstractFSM<DeviceState, GatewayData> {
             if (to != DeviceState.UNINITIALIZED) {
                 try {
                     Unirest.patch(airtableRecordURL)
-                            .header("Authorization", "Bearer " + SecretStuff.AIRTABLE_API_KEY)
+                            .header("Authorization", "Bearer " + airtableAPIKey)
                             .header("Content-Type", "application/json")
                             .header("accept", "application/json")
                             .body(new JsonNode("{fields: {status: " + to + "}}"))

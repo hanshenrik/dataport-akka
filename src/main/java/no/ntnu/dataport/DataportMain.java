@@ -1,20 +1,39 @@
 package no.ntnu.dataport;
 
 import akka.actor.*;
+import akka.event.Logging;
+import akka.event.LoggingAdapter;
 import no.ntnu.dataport.actors.ExternalResourceSupervisorActor;
 import no.ntnu.dataport.actors.SiteActor;
 import no.ntnu.dataport.types.ApplicationParameters;
 import no.ntnu.dataport.types.Messages;
 import no.ntnu.dataport.types.Position;
-import no.ntnu.dataport.utils.SecretStuff;
 
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 
 public class DataportMain {
 
+    public static Properties properties;
+
     public static void main(String[] args) {
         final ActorSystem system = ActorSystem.create("DataportActorSystem");
+        LoggingAdapter log = Logging.getLogger(system, "DataportMain");
+
+        properties = new Properties();
+        try {
+            InputStream is = DataportMain.class.getResourceAsStream("/application.properties");
+            BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+            properties.load(reader);
+        }
+        catch (Exception e) {
+            log.error("Failed to load application.properties -- did you remember to add it?");
+            log.error("Cannot start system without properties, shutting down...");
+            system.shutdown();
+            return;
+        }
 
         Props externalResourceSupervisorProps = Props.create(ExternalResourceSupervisorActor.class);
         final ActorRef externalResourceSupervisor = system.actorOf(externalResourceSupervisorProps, "externalResourceSupervisor");
@@ -23,13 +42,13 @@ public class DataportMain {
         List<ApplicationParameters> applications = new ArrayList<>();
         applications.add(new ApplicationParameters(
                 "Trondheim",
-                SecretStuff.TRONDHEIM_APP_EUI,
-                SecretStuff.TRONDHEIM_APP_KEY,
+                properties.getProperty("TRONDHEIM_APP_EUI"),
+                properties.getProperty("TRONDHEIM_APP_KEY"),
                 new Position(63.430515, 10.395053)));
         applications.add(new ApplicationParameters(
                 "Vejle",
-                SecretStuff.VEJLE_APP_EUI,
-                SecretStuff.VEJLE_APP_KEY,
+                properties.getProperty("VEJLE_APP_EUI"),
+                properties.getProperty("VEJLE_APP_KEY"),
                 new Position(55.711311, 9.536354)));
 
         for (ApplicationParameters params : applications) {
